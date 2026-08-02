@@ -111,7 +111,7 @@ export default function App() {
     };
   }, []);
 
-  const handleToggle = async (metric: any, isCompleted: boolean, existingLog: any) => {
+  const handleToggle = async (metric: any, _isCompleted: boolean, existingLog: any) => {
     try {
       if (metric.type === 'numeric') {
         const val = prompt(`Enter value for ${metric.name}:`);
