@@ -1,15 +1,102 @@
 import { useState, useEffect } from 'react';
-import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, Apple, TrendingDown } from 'lucide-react';
+import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, Apple, TrendingDown, Hammer, Zap, Trophy } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { format, subDays, eachDayOfInterval } from 'date-fns';
+import { format, subDays, eachDayOfInterval, differenceInDays, parseISO } from 'date-fns';
 import * as ActivityCalendarModule from 'react-activity-calendar';
 const ActivityCalendar = (ActivityCalendarModule as any).default || (ActivityCalendarModule as any).ActivityCalendar || ActivityCalendarModule;
 
 // Map database icon strings to Lucide components
 const iconMap: Record<string, any> = {
-  Activity, Dumbbell, BrainCircuit, FileText, Moon, Flame, ShieldAlert, Footprints, Apple, TrendingDown
+  Activity, Dumbbell, BrainCircuit, FileText, Moon, Flame, ShieldAlert, Footprints, Apple, TrendingDown, Hammer
 };
 
+// ── Streak Calculator ──────────────────────────────────────────────────
+function computeStreaks(
+  historicalLogs: any[],
+  metrics: any[],
+  category: string
+): { current: number; best: number } {
+  const categoryMetricIds = metrics
+    .filter(m => m.category === category && !m.is_kryptonite)
+    .map(m => m.id);
+
+  if (categoryMetricIds.length === 0) return { current: 0, best: 0 };
+
+  // Get unique dates where at least one metric in this category was logged
+  const activeDates = new Set<string>();
+  historicalLogs.forEach(log => {
+    if (categoryMetricIds.includes(log.metric_id)) {
+      if (log.value_boolean || (log.value_numeric !== null && log.value_numeric > 0)) {
+        activeDates.add(log.log_date);
+      }
+    }
+  });
+
+  // Sort dates descending
+  const sortedDates = Array.from(activeDates).sort((a, b) => b.localeCompare(a));
+  if (sortedDates.length === 0) return { current: 0, best: 0 };
+
+  // Calculate current streak (counting back from today)
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+  
+  let currentStreak = 0;
+  // Check if today or yesterday has a log (to allow logging later in the day)
+  const startFrom = sortedDates[0] === todayStr || sortedDates[0] === yesterdayStr ? sortedDates[0] : null;
+  
+  if (startFrom) {
+    let expectedDate = parseISO(startFrom);
+    for (const dateStr of sortedDates) {
+      const logDate = parseISO(dateStr);
+      const diff = differenceInDays(expectedDate, logDate);
+      if (diff === 0) {
+        currentStreak++;
+        expectedDate = subDays(expectedDate, 1);
+      } else if (diff > 0) {
+        break; // streak broken
+      }
+    }
+  }
+
+  // Calculate best streak ever
+  let bestStreak = 0;
+  let tempStreak = 1;
+  const allSorted = Array.from(activeDates).sort(); // ascending
+  for (let i = 1; i < allSorted.length; i++) {
+    const diff = differenceInDays(parseISO(allSorted[i]), parseISO(allSorted[i - 1]));
+    if (diff === 1) {
+      tempStreak++;
+    } else {
+      bestStreak = Math.max(bestStreak, tempStreak);
+      tempStreak = 1;
+    }
+  }
+  bestStreak = Math.max(bestStreak, tempStreak);
+
+  return { current: currentStreak, best: bestStreak };
+}
+
+// ── Streak Badge Component ──────────────────────────────────────────────
+function StreakBadge({ label, current, best }: { label: string; current: number; best: number }) {
+  const isOnFire = current >= 3;
+  return (
+    <div className={`p-3 rounded-lg border transition-all ${isOnFire ? 'border-amber-500/50 bg-amber-500/10' : 'border-white/5 bg-surface/50'}`}>
+      <div className="flex items-center gap-2 mb-1">
+        {isOnFire && <Zap className="w-3 h-3 text-amber-400" />}
+        <span className="text-[10px] font-bold uppercase tracking-widest text-textSecondary">{label}</span>
+      </div>
+      <div className="flex items-end gap-3">
+        <span className={`text-2xl font-black font-mono ${isOnFire ? 'text-amber-400' : 'text-white'}`}>{current}</span>
+        <div className="flex items-center gap-1 mb-1">
+          <Trophy className="w-3 h-3 text-textSecondary" />
+          <span className="text-xs text-textSecondary font-mono">{best}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Metric Card Component ──────────────────────────────────────────────
 function MetricCard({ metric, log, onToggle }: { metric: any, log: any, onToggle: any }) {
   const Icon = iconMap[metric.icon] || Activity;
   const isCompleted = log ? (metric.type === 'boolean' ? log.value_boolean : (log.value_numeric !== null && log.value_numeric > 0)) : false;
@@ -46,11 +133,16 @@ function MetricCard({ metric, log, onToggle }: { metric: any, log: any, onToggle
   );
 }
 
+// ── Main App ──────────────────────────────────────────────────────────
 export default function App() {
   const [metrics, setMetrics] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [historicalLogs, setHistoricalLogs] = useState<any[]>([]);
   const [interstitialLogs, setInterstitialLogs] = useState<any[]>([]);
+  const [todayBuild, setTodayBuild] = useState<any>(null);
+  const [buildText, setBuildText] = useState('');
+  const [buildLink, setBuildLink] = useState('');
+  const [showBuildForm, setShowBuildForm] = useState(false);
   const [logText, setLogText] = useState('');
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -60,22 +152,19 @@ export default function App() {
   const fetchData = async () => {
     setDbError(null);
     
-    // Fetch metrics
     const { data: metricsData, error: metricsErr } = await supabase.from('metrics').select('*').eq('is_active', true);
     if (metricsErr) setDbError(metricsErr.message);
     
-    // Fetch today's logs
     const { data: logsData, error: logsErr } = await supabase.from('daily_logs').select('*').eq('log_date', today);
     if (logsErr && !dbError) setDbError(logsErr.message);
 
-    // Fetch last 90 days for heatmap
-    const ninetyDaysAgo = format(subDays(new Date(), 90), 'yyyy-MM-dd');
+    // Fetch last 180 days for heatmap + streak computation
+    const historyStart = format(subDays(new Date(), 180), 'yyyy-MM-dd');
     const { data: historyData } = await supabase
       .from('daily_logs')
       .select('*')
-      .gte('log_date', ninetyDaysAgo);
+      .gte('log_date', historyStart);
     
-    // Fetch today's interstitial logs
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const { data: intLogsData, error: intErr } = await supabase
@@ -84,11 +173,19 @@ export default function App() {
       .gte('created_at', startOfDay.toISOString())
       .order('created_at', { ascending: true });
     if (intErr && !dbError) setDbError(intErr.message);
+
+    // Fetch today's build log
+    const { data: buildData } = await supabase
+      .from('build_logs')
+      .select('*')
+      .eq('log_date', today)
+      .maybeSingle();
       
     if (metricsData) setMetrics(metricsData);
     if (logsData) setLogs(logsData);
     if (historyData) setHistoricalLogs(historyData);
     if (intLogsData) setInterstitialLogs(intLogsData);
+    if (buildData) setTodayBuild(buildData);
     
     setLoading(false);
   };
@@ -96,7 +193,6 @@ export default function App() {
   useEffect(() => {
     fetchData();
     
-    // Set up real-time subscriptions
     const logsSub = supabase.channel('daily_logs_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_logs' }, fetchData)
       .subscribe();
@@ -125,14 +221,12 @@ export default function App() {
           await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: today, value_numeric: numVal }]);
         }
       } else {
-        // Boolean toggle
         if (existingLog) {
           await supabase.from('daily_logs').delete().eq('id', existingLog.id);
         } else {
           await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: today, value_boolean: true }]);
         }
       }
-      // Force UI to update immediately
       await fetchData();
     } catch (err) {
       console.error("Toggle error:", err);
@@ -142,14 +236,29 @@ export default function App() {
   const handleAddInterstitialLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!logText.trim()) return;
-    
     await supabase.from('interstitial_logs').insert([{ content: logText.trim(), log_type: 'reflection' }]);
     setLogText('');
+    await fetchData();
+  };
+
+  const handleSubmitBuild = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!buildText.trim()) return;
+    
+    if (todayBuild) {
+      await supabase.from('build_logs').update({ description: buildText.trim(), link: buildLink.trim() || null }).eq('id', todayBuild.id);
+    } else {
+      await supabase.from('build_logs').insert([{ log_date: today, description: buildText.trim(), link: buildLink.trim() || null }]);
+    }
+    setShowBuildForm(false);
+    setBuildText('');
+    setBuildLink('');
+    await fetchData();
   };
 
   // Process historical data for heatmap
   const getHeatmapData = () => {
-    if (!metrics.length || !historicalLogs.length) return [];
+    if (!metrics.length) return [];
     
     const end = new Date();
     const start = subDays(end, 90);
@@ -165,11 +274,11 @@ export default function App() {
       if (!metric) return;
       
       const dateStr = log.log_date;
-      if (activityMap[dateStr] === undefined) return; // outside 90 days range
+      if (activityMap[dateStr] === undefined) return;
 
       if (metric.type === 'boolean') {
         if (metric.is_kryptonite && log.value_boolean) {
-          activityMap[dateStr] -= 2; // Penalize leaks
+          activityMap[dateStr] -= 2;
         } else if (!metric.is_kryptonite && log.value_boolean) {
           activityMap[dateStr] += 1;
         }
@@ -178,7 +287,6 @@ export default function App() {
       }
     });
 
-    // Map to React Activity Calendar format
     return Object.entries(activityMap).map(([date, score]) => {
       let level = 0;
       if (score > 0 && score <= 2) level = 1;
@@ -186,11 +294,7 @@ export default function App() {
       else if (score > 4 && score <= 6) level = 3;
       else if (score > 6) level = 4;
       
-      return {
-        date,
-        count: Math.max(0, score),
-        level
-      };
+      return { date, count: Math.max(0, score), level };
     }).sort((a, b) => a.date.localeCompare(b.date));
   };
 
@@ -204,6 +308,11 @@ export default function App() {
   });
 
   const heatmapData = getHeatmapData();
+
+  // Compute streaks per engine
+  const physicalStreak = computeStreaks(historicalLogs, metrics, 'Physical');
+  const cognitiveStreak = computeStreaks(historicalLogs, metrics, 'Cognitive');
+  const spiritualStreak = computeStreaks(historicalLogs, metrics, 'Spiritual');
 
   return (
     <div className="min-h-screen bg-background text-textPrimary p-4 md:p-8 font-sans pb-24 selection:bg-primary selection:text-white">
@@ -220,33 +329,37 @@ export default function App() {
         </div>
       )}
 
-      <header className="mb-12 border-b border-white/10 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter">The Execution Engine</h1>
-          <p className="text-textSecondary font-mono mt-2">{format(new Date(), 'EEEE, MMMM do, yyyy')}</p>
-        </div>
-        
-        {heatmapData.length > 0 && (
-          <div className="bg-surface/50 p-4 rounded-lg border border-white/5">
-             <h2 className="text-[10px] font-bold uppercase tracking-widest text-textSecondary mb-2">90-Day Momentum</h2>
-             <ActivityCalendar 
-                data={heatmapData} 
-                theme={{
-                  light: ['#171717', '#450a0a', '#7f1d1d', '#b91c1c', '#ef4444'],
-                  dark: ['#171717', '#450a0a', '#7f1d1d', '#b91c1c', '#ef4444'],
-                }}
-                colorScheme="dark"
-                labels={{
-                  legend: {
-                    less: 'Weak',
-                    more: 'Strong'
-                  }
-                }}
-                hideTotalCount
-                hideMonthLabels
-             />
+      <header className="mb-8 border-b border-white/10 pb-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-6">
+          <div>
+            <h1 className="text-4xl font-black uppercase tracking-tighter">The Execution Engine</h1>
+            <p className="text-textSecondary font-mono mt-2">{format(new Date(), 'EEEE, MMMM do, yyyy')}</p>
           </div>
-        )}
+          
+          {heatmapData.length > 0 && (
+            <div className="bg-surface/50 p-4 rounded-lg border border-white/5">
+               <h2 className="text-[10px] font-bold uppercase tracking-widest text-textSecondary mb-2">90-Day Momentum</h2>
+               <ActivityCalendar 
+                  data={heatmapData} 
+                  theme={{
+                    light: ['#171717', '#450a0a', '#7f1d1d', '#b91c1c', '#ef4444'],
+                    dark: ['#171717', '#450a0a', '#7f1d1d', '#b91c1c', '#ef4444'],
+                  }}
+                  colorScheme="dark"
+                  labels={{ legend: { less: 'Weak', more: 'Strong' } }}
+                  hideTotalCount
+                  hideMonthLabels
+               />
+            </div>
+          )}
+        </div>
+
+        {/* ── STREAK ENGINE ────────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-3">
+          <StreakBadge label="Physical" current={physicalStreak.current} best={physicalStreak.best} />
+          <StreakBadge label="Cognitive" current={cognitiveStreak.current} best={cognitiveStreak.best} />
+          <StreakBadge label="Spiritual" current={spiritualStreak.current} best={spiritualStreak.best} />
+        </div>
       </header>
 
       <div className="grid lg:grid-cols-2 gap-12 max-w-6xl">
@@ -255,12 +368,7 @@ export default function App() {
             <h2 className="text-xs font-bold uppercase tracking-widest text-textSecondary mb-4">Physical Engine</h2>
             <div className="space-y-3">
               {metrics.filter(m => m.category === 'Physical').map(m => (
-                <MetricCard 
-                  key={m.id} 
-                  metric={m} 
-                  log={logs.find(l => l.metric_id === m.id)} 
-                  onToggle={handleToggle} 
-                />
+                <MetricCard key={m.id} metric={m} log={logs.find(l => l.metric_id === m.id)} onToggle={handleToggle} />
               ))}
             </div>
           </section>
@@ -269,13 +377,66 @@ export default function App() {
             <h2 className="text-xs font-bold uppercase tracking-widest text-textSecondary mb-4">Cognitive Engine</h2>
             <div className="space-y-3">
               {metrics.filter(m => m.category === 'Cognitive').map(m => (
-                <MetricCard 
-                  key={m.id} 
-                  metric={m} 
-                  log={logs.find(l => l.metric_id === m.id)} 
-                  onToggle={handleToggle} 
-                />
+                <MetricCard key={m.id} metric={m} log={logs.find(l => l.metric_id === m.id)} onToggle={handleToggle} />
               ))}
+            </div>
+
+            {/* ── BUILD-FIRST CHALLENGE ────────────────────────────── */}
+            <div className={`mt-4 p-4 border rounded-lg transition-all ${todayBuild ? 'bg-emerald-950/30 border-emerald-500/30' : 'bg-amber-950/20 border-amber-500/30'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <Hammer className={`w-5 h-5 ${todayBuild ? 'text-emerald-400' : 'text-amber-400'}`} />
+                  <span className={`font-bold text-sm uppercase tracking-wider ${todayBuild ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {todayBuild ? 'Shipped Today' : 'What Did You BUILD Today?'}
+                  </span>
+                </div>
+                {!todayBuild && !showBuildForm && (
+                  <button onClick={() => setShowBuildForm(true)} className="text-xs bg-amber-500/20 text-amber-400 px-3 py-1 rounded font-bold uppercase hover:bg-amber-500/30 transition-colors">
+                    Log Build
+                  </button>
+                )}
+              </div>
+
+              {todayBuild && (
+                <div className="mt-2">
+                  <p className="text-sm text-white font-mono">{todayBuild.description}</p>
+                  {todayBuild.link && (
+                    <a href={todayBuild.link} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-400 underline mt-1 inline-block">
+                      View →
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {!todayBuild && !showBuildForm && (
+                <p className="text-xs text-amber-400/60 italic mt-1">
+                  Not read. Not watched. Not planned. What did you BUILD?
+                </p>
+              )}
+
+              {showBuildForm && (
+                <form onSubmit={handleSubmitBuild} className="mt-3 space-y-2">
+                  <input
+                    type="text"
+                    value={buildText}
+                    onChange={e => setBuildText(e.target.value)}
+                    placeholder="Built a PySpark pipeline for..."
+                    className="w-full bg-background border border-white/20 rounded p-2 text-sm focus:outline-none focus:border-amber-400 transition-colors"
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    value={buildLink}
+                    onChange={e => setBuildLink(e.target.value)}
+                    placeholder="Link (optional): GitHub commit, screenshot..."
+                    className="w-full bg-background border border-white/10 rounded p-2 text-xs focus:outline-none focus:border-white/30 transition-colors text-textSecondary"
+                  />
+                  <div className="flex gap-2">
+                    <button type="submit" className="bg-amber-500 text-black font-bold px-4 py-1.5 rounded uppercase text-xs hover:bg-amber-400 transition-colors">Ship It</button>
+                    <button type="button" onClick={() => setShowBuildForm(false)} className="text-textSecondary text-xs hover:text-white transition-colors">Cancel</button>
+                  </div>
+                </form>
+              )}
             </div>
           </section>
         </div>
@@ -285,17 +446,12 @@ export default function App() {
             <h2 className="text-xs font-bold uppercase tracking-widest text-textSecondary mb-4">Spiritual & Defense</h2>
             <div className="space-y-3">
               {metrics.filter(m => m.category === 'Spiritual' || m.category === 'Defense').map(m => (
-                <MetricCard 
-                  key={m.id} 
-                  metric={m} 
-                  log={logs.find(l => l.metric_id === m.id)} 
-                  onToggle={handleToggle} 
-                />
+                <MetricCard key={m.id} metric={m} log={logs.find(l => l.metric_id === m.id)} onToggle={handleToggle} />
               ))}
             </div>
           </section>
 
-          <section className="mt-12 p-6 bg-surface border border-white/10 rounded-lg flex flex-col h-[400px]">
+          <section className="mt-4 p-6 bg-surface border border-white/10 rounded-lg flex flex-col h-[400px]">
             <h2 className="text-xs font-bold uppercase tracking-widest text-textSecondary mb-4">Interstitial Log</h2>
             <div className="space-y-4 mb-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {interstitialLogs.map(log => (
