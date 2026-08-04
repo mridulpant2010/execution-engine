@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, Apple, TrendingDown, Hammer, Zap, Trophy } from 'lucide-react';
+import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, Apple, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { format, subDays, eachDayOfInterval, differenceInDays, parseISO } from 'date-fns';
+import { format, subDays, addDays, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
 import * as ActivityCalendarModule from 'react-activity-calendar';
 const ActivityCalendar = (ActivityCalendarModule as any).default || (ActivityCalendarModule as any).ActivityCalendar || ActivityCalendarModule;
 
@@ -146,8 +146,17 @@ export default function App() {
   const [logText, setLogText] = useState('');
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
   
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const isViewingToday = isToday(selectedDate);
+
+  const goToPreviousDay = () => setSelectedDate(prev => subDays(prev, 1));
+  const goToNextDay = () => {
+    const next = addDays(selectedDate, 1);
+    if (!isFuture(next)) setSelectedDate(next);
+  };
+  const goToToday = () => setSelectedDate(new Date());
 
   const fetchData = async () => {
     setDbError(null);
@@ -155,7 +164,7 @@ export default function App() {
     const { data: metricsData, error: metricsErr } = await supabase.from('metrics').select('*').eq('is_active', true);
     if (metricsErr) setDbError(metricsErr.message);
     
-    const { data: logsData, error: logsErr } = await supabase.from('daily_logs').select('*').eq('log_date', today);
+    const { data: logsData, error: logsErr } = await supabase.from('daily_logs').select('*').eq('log_date', selectedDateStr);
     if (logsErr && !dbError) setDbError(logsErr.message);
 
     // Fetch last 180 days for heatmap + streak computation
@@ -165,12 +174,15 @@ export default function App() {
       .select('*')
       .gte('log_date', historyStart);
     
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const dayStart = new Date(selectedDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(selectedDate);
+    dayEnd.setHours(23, 59, 59, 999);
     const { data: intLogsData, error: intErr } = await supabase
       .from('interstitial_logs')
       .select('*')
-      .gte('created_at', startOfDay.toISOString())
+      .gte('created_at', dayStart.toISOString())
+      .lte('created_at', dayEnd.toISOString())
       .order('created_at', { ascending: true });
     if (intErr && !dbError) setDbError(intErr.message);
 
@@ -178,14 +190,14 @@ export default function App() {
     const { data: buildData } = await supabase
       .from('build_logs')
       .select('*')
-      .eq('log_date', today)
+      .eq('log_date', selectedDateStr)
       .maybeSingle();
       
     if (metricsData) setMetrics(metricsData);
     if (logsData) setLogs(logsData);
     if (historyData) setHistoricalLogs(historyData);
     if (intLogsData) setInterstitialLogs(intLogsData);
-    if (buildData) setTodayBuild(buildData);
+    setTodayBuild(buildData || null);
     
     setLoading(false);
   };
@@ -205,7 +217,7 @@ export default function App() {
       supabase.removeChannel(logsSub);
       supabase.removeChannel(intLogsSub);
     };
-  }, []);
+  }, [selectedDateStr]);
 
   const handleToggle = async (metric: any, _isCompleted: boolean, existingLog: any) => {
     try {
@@ -218,13 +230,13 @@ export default function App() {
         if (existingLog) {
           await supabase.from('daily_logs').update({ value_numeric: numVal }).eq('id', existingLog.id);
         } else {
-          await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: today, value_numeric: numVal }]);
+          await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: selectedDateStr, value_numeric: numVal }]);
         }
       } else {
         if (existingLog) {
           await supabase.from('daily_logs').delete().eq('id', existingLog.id);
         } else {
-          await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: today, value_boolean: true }]);
+          await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: selectedDateStr, value_boolean: true }]);
         }
       }
       await fetchData();
@@ -248,7 +260,7 @@ export default function App() {
     if (todayBuild) {
       await supabase.from('build_logs').update({ description: buildText.trim(), link: buildLink.trim() || null }).eq('id', todayBuild.id);
     } else {
-      await supabase.from('build_logs').insert([{ log_date: today, description: buildText.trim(), link: buildLink.trim() || null }]);
+      await supabase.from('build_logs').insert([{ log_date: selectedDateStr, description: buildText.trim(), link: buildLink.trim() || null }]);
     }
     setShowBuildForm(false);
     setBuildText('');
@@ -329,11 +341,44 @@ export default function App() {
         </div>
       )}
 
+      {/* ── PAST DAY INDICATOR ────────────────────────────────── */}
+      {!isViewingToday && (
+        <div className="mb-4 p-3 bg-amber-950/30 border border-amber-500/30 text-amber-400 rounded flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4" />
+            <span className="text-sm font-bold uppercase tracking-wider">Viewing Past Day</span>
+          </div>
+          <button onClick={goToToday} className="text-xs bg-amber-500/20 px-3 py-1 rounded font-bold uppercase hover:bg-amber-500/30 transition-colors">
+            Back to Today
+          </button>
+        </div>
+      )}
+
       <header className="mb-8 border-b border-white/10 pb-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-6">
           <div>
             <h1 className="text-4xl font-black uppercase tracking-tighter">The Execution Engine</h1>
-            <p className="text-textSecondary font-mono mt-2">{format(new Date(), 'EEEE, MMMM do, yyyy')}</p>
+            {/* ── DATE NAVIGATOR ────────────────────────────────── */}
+            <div className="flex items-center gap-3 mt-3">
+              <button onClick={goToPreviousDay} className="p-1.5 rounded border border-white/10 hover:border-white/30 hover:bg-surface transition-all">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <p className={`font-mono text-sm ${isViewingToday ? 'text-textSecondary' : 'text-amber-400'}`}>
+                {format(selectedDate, 'EEEE, MMMM do, yyyy')}
+              </p>
+              <button 
+                onClick={goToNextDay} 
+                disabled={isViewingToday}
+                className={`p-1.5 rounded border transition-all ${isViewingToday ? 'border-white/5 text-white/20 cursor-not-allowed' : 'border-white/10 hover:border-white/30 hover:bg-surface'}`}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              {!isViewingToday && (
+                <button onClick={goToToday} className="text-[10px] bg-white/10 text-white px-2 py-1 rounded font-bold uppercase hover:bg-white/20 transition-colors">
+                  Today
+                </button>
+              )}
+            </div>
           </div>
           
           {heatmapData.length > 0 && (
