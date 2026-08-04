@@ -1,28 +1,47 @@
 @import "tailwindcss";
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 @theme {
   --color-background: #0a0a0a;
-  --color-surface: #171717;
-  --color-primary: #ef4444;
-  --color-textPrimary: #f5f5f5;
-  --color-textSecondary: #a3a3a3;
+  --color-surface: #141414;
+  --color-surface-elevated: #1c1c1e;
+  --color-strava: #FC4C02;
+  --color-strava-dark: #d4400a;
+  --color-strava-glow: #FC4C0233;
+  --color-success: #34D399;
+  --color-danger: #EF4444;
+  --color-warning: #F59E0B;
+  --color-textPrimary: #FAFAFA;
+  --color-textSecondary: #71717A;
+  --color-textMuted: #3F3F46;
+  --color-border: #27272A;
+  --color-border-hover: #3F3F46;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  @apply bg-background text-textPrimary antialiased selection:bg-primary selection:text-white font-sans;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  @apply bg-background text-textPrimary antialiased;
 }
 
-/* Custom scrollbar for webkit */
-::-webkit-scrollbar {
-  width: 8px;
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #27272A; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3F3F46; }
+
+/* Smooth transitions */
+.card-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-::-webkit-scrollbar-track {
-  background: #0a0a0a;
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
-::-webkit-scrollbar-thumb {
-  background: #262626;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #404040;
+.card-hover:active {
+  transform: scale(0.98);
 }
