@@ -183,7 +183,7 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ height: '120px' }} preserveAspectRatio="xMidYMid meet">
+      <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ height: '180px' }} preserveAspectRatio="xMidYMid meet">
         {/* Baseline (average) */}
         {avgScore > 0 && (
           <line x1="0" y1={baselineY} x2={chartW} y2={baselineY}
@@ -579,26 +579,33 @@ export default function App() {
           <StreakCard label="Spiritual" emoji="🧘" current={spiritualStreak.current} best={spiritualStreak.best} />
         </div>
 
-        {/* 7-Day Effort Trend */}
-        <WeeklyEffortChart historicalLogs={historicalLogs} metrics={metrics} />
+        {/* Charts: Effort Trend + Heatmap side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* 7-Day Effort Trend */}
+          <WeeklyEffortChart historicalLogs={historicalLogs} metrics={metrics} />
 
-        {/* 90-Day Heatmap */}
-        {heatmapData.length > 0 && (
-          <div className="rounded-2xl bg-surface border border-border p-4 overflow-x-auto">
+          {/* 90-Day Heatmap */}
+          <div className="rounded-2xl bg-surface border border-border p-4 overflow-x-auto flex flex-col">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary mb-3">90-Day Momentum</h2>
-            <ActivityCalendar
-              data={heatmapData}
-              theme={{
-                light: ['#1c1c1e', '#4a1c08', '#7c2d12', '#c2410c', '#FC4C02'],
-                dark: ['#1c1c1e', '#4a1c08', '#7c2d12', '#c2410c', '#FC4C02'],
-              }}
-              colorScheme="dark"
-              labels={{ legend: { less: 'Rest', more: 'Active' } }}
-              hideTotalCount
-              hideMonthLabels
-            />
+            <div className="flex-1 flex items-center">
+              {heatmapData.length > 0 ? (
+                <ActivityCalendar
+                  data={heatmapData}
+                  theme={{
+                    light: ['#1c1c1e', '#4a1c08', '#7c2d12', '#c2410c', '#FC4C02'],
+                    dark: ['#1c1c1e', '#4a1c08', '#7c2d12', '#c2410c', '#FC4C02'],
+                  }}
+                  colorScheme="dark"
+                  labels={{ legend: { less: 'Rest', more: 'Active' } }}
+                  hideTotalCount
+                  hideMonthLabels
+                />
+              ) : (
+                <p className="text-xs text-textMuted italic">No data yet</p>
+              )}
+            </div>
           </div>
-        )}
+        </div>
 
         {/* Physical Engine */}
         <section>
