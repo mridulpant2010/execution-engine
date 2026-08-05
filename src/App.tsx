@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X } from 'lucide-react';
+import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { format, subDays, addDays, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
 import * as ActivityCalendarModule from 'react-activity-calendar';
@@ -48,6 +48,125 @@ function computeStreaks(historicalLogs: any[], metrics: any[], category: string)
   }
   bestStreak = Math.max(bestStreak, tempStreak);
   return { current: currentStreak, best: bestStreak };
+}
+
+// ── Relative Effort Calculator ──────────────────────────────────────
+function computeRelativeEffort(logs: any[], metrics: any[]): { score: number; label: string; color: string } {
+  if (!metrics.length || !logs.length) return { score: 0, label: 'No Data', color: 'text-textMuted' };
+
+  let baseScore = 0;
+  let workHours = 0;
+  let sleepHours = 8; // default assumption
+  let leakPenalty = 0;
+
+  logs.forEach(log => {
+    const metric = metrics.find(m => m.id === log.metric_id);
+    if (!metric) return;
+    const name = metric.name.toLowerCase();
+
+    // Extract constraint values
+    if (name.includes('work hours')) { workHours = log.value_numeric || 0; return; }
+    if (name.includes('sleep hours')) { sleepHours = log.value_numeric || 8; return; }
+
+    // Kryptonite penalties
+    if (metric.is_kryptonite && log.value_boolean) {
+      if (name.includes('energy leak') || name.includes('pmo')) leakPenalty += 25;
+      else leakPenalty += 10; // "Done Enough" trap
+      return;
+    }
+
+    // Base action scoring
+    if (metric.type === 'boolean' && log.value_boolean) {
+      if (name.includes('hyrox') || name.includes('strength')) baseScore += 10;
+      else if (name.includes('kora') || name.includes('recall')) baseScore += 8;
+      else if (name.includes('prayer') || name.includes('naam') || name.includes('sleep by')) baseScore += 3;
+      else if (name.includes('eat')) baseScore += 3;
+      else baseScore += 5; // generic boolean habit
+    } else if (metric.type === 'numeric' && log.value_numeric > 0) {
+      if (name.includes('run')) baseScore += 1.5 * log.value_numeric;
+      else if (name.includes('focus')) baseScore += 5 * log.value_numeric;
+      else baseScore += 3 * log.value_numeric;
+    }
+  });
+
+  // Constraint multipliers
+  let multiplier = 1.0;
+  if (workHours >= 8) multiplier += 0.5;  // Hard workday
+  if (workHours >= 10) multiplier += 0.2; // Brutal workday (like yours)
+  if (sleepHours > 0 && sleepHours < 6.5) multiplier += 0.3; // Sleep deprived
+
+  const finalScore = Math.max(0, Math.round(baseScore * multiplier - leakPenalty));
+
+  // Classify effort level
+  if (finalScore === 0) return { score: 0, label: 'Rest Day', color: 'text-textMuted' };
+  if (finalScore < 35) return { score: finalScore, label: 'Low Output', color: 'text-textSecondary' };
+  if (finalScore < 70) return { score: finalScore, label: 'Solid Day', color: 'text-success' };
+  if (finalScore < 100) return { score: finalScore, label: 'Hard Push', color: 'text-strava' };
+  return { score: finalScore, label: 'Overdrive', color: 'text-strava' };
+}
+
+// ── Relative Effort Badge ──────────────────────────────────────
+function RelativeEffortBadge({ score, label, color }: { score: number; label: string; color: string }) {
+  const isHigh = score >= 70;
+  return (
+    <div className="text-center">
+      <div className={`relative w-20 h-20 mx-auto ${isHigh ? 'animate-pulse' : ''}`} style={{ animationDuration: '3s' }}>
+        <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="34" stroke="#27272A" strokeWidth="5" fill="none" />
+          <circle cx="40" cy="40" r="34"
+            stroke={score >= 100 ? '#FC4C02' : score >= 70 ? '#FC4C02' : score >= 35 ? '#34D399' : '#3F3F46'}
+            strokeWidth="5" fill="none"
+            strokeDasharray={`${2 * Math.PI * 34}`}
+            strokeDashoffset={`${2 * Math.PI * 34 * (1 - Math.min(score, 120) / 120)}`}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className={`text-xl font-black tabular-nums ${color}`}>{score}</span>
+        </div>
+      </div>
+      <p className={`text-[10px] font-bold uppercase tracking-wider mt-1 ${color}`}>{label}</p>
+    </div>
+  );
+}
+
+// ── Weekly Effort Chart (7-day bar chart) ──────────────────────
+function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[]; metrics: any[] }) {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = subDays(new Date(), i);
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
+    const { score } = computeRelativeEffort(dayLogs, metrics);
+    days.push({ label: format(date, 'EEE')[0], score, dateStr, isToday: i === 0 });
+  }
+
+  const maxScore = Math.max(...days.map(d => d.score), 1);
+
+  return (
+    <div className="rounded-2xl bg-surface border border-border p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Gauge className="w-4 h-4 text-strava" />
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">7-Day Effort Trend</h2>
+      </div>
+      <div className="flex items-end justify-between gap-1.5 h-20">
+        {days.map((day, i) => {
+          const heightPct = day.score > 0 ? Math.max(10, (day.score / maxScore) * 100) : 4;
+          const barColor = day.score >= 100 ? 'bg-strava' : day.score >= 70 ? 'bg-strava/80' : day.score >= 35 ? 'bg-success/60' : day.score > 0 ? 'bg-textMuted' : 'bg-border';
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <span className="text-[9px] text-textMuted font-semibold tabular-nums">{day.score > 0 ? day.score : ''}</span>
+              <div className="w-full rounded-t-md transition-all duration-500 ease-out" style={{ height: `${heightPct}%` }}>
+                <div className={`w-full h-full rounded-t-md ${barColor}`} />
+              </div>
+              <span className={`text-[10px] font-semibold ${day.isToday ? 'text-strava' : 'text-textMuted'}`}>{day.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ── Streak Card ──────────────────────────────────────────────
@@ -210,7 +329,11 @@ export default function App() {
   const handleAddInterstitialLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!logText.trim()) return;
-    await supabase.from('interstitial_logs').insert([{ content: logText.trim(), log_type: 'reflection' }]);
+    // Use selectedDate for the timestamp so historical logs persist correctly
+    const logTimestamp = new Date(selectedDate);
+    const now = new Date();
+    logTimestamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+    await supabase.from('interstitial_logs').insert([{ content: logText.trim(), log_type: 'reflection', created_at: logTimestamp.toISOString() }]);
     setLogText('');
     await fetchData();
   };
@@ -277,6 +400,9 @@ export default function App() {
   }).length;
   const completionPct = totalNonKryptonite > 0 ? Math.round((completedCount / totalNonKryptonite) * 100) : 0;
 
+  // Compute Relative Effort
+  const relativeEffort = computeRelativeEffort(logs, metrics);
+
   return (
     <div className="min-h-screen bg-background text-textPrimary pb-24">
       {/* ── STRAVA-STYLE HEADER ──────────────────────────────── */}
@@ -317,26 +443,32 @@ export default function App() {
             </button>
           </div>
 
-          {/* Daily Completion Ring */}
-          <div className="flex items-center justify-center gap-6 py-4">
-            <div className="relative w-20 h-20">
-              <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="34" stroke="#27272A" strokeWidth="6" fill="none" />
-                <circle cx="40" cy="40" r="34" stroke="#FC4C02" strokeWidth="6" fill="none"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - completionPct / 100)}`}
-                  strokeLinecap="round"
-                  className="transition-all duration-700 ease-out"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xl font-black tabular-nums text-strava">{completionPct}%</span>
+          {/* Daily Stats: Completion + Relative Effort */}
+          <div className="flex items-center justify-center gap-8 py-4">
+            {/* Completion Ring */}
+            <div className="text-center">
+              <div className="relative w-20 h-20 mx-auto">
+                <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="34" stroke="#27272A" strokeWidth="5" fill="none" />
+                  <circle cx="40" cy="40" r="34" stroke="#FC4C02" strokeWidth="5" fill="none"
+                    strokeDasharray={`${2 * Math.PI * 34}`}
+                    strokeDashoffset={`${2 * Math.PI * 34 * (1 - completionPct / 100)}`}
+                    strokeLinecap="round"
+                    className="transition-all duration-700 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-lg font-black tabular-nums text-strava">{completionPct}%</span>
+                </div>
               </div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mt-1 text-textSecondary">{completedCount}/{totalNonKryptonite} Done</p>
             </div>
-            <div>
-              <p className="text-2xl font-black">{completedCount}<span className="text-textMuted">/{totalNonKryptonite}</span></p>
-              <p className="text-xs text-textSecondary">missions complete</p>
-            </div>
+
+            {/* Divider */}
+            <div className="w-px h-16 bg-border"></div>
+
+            {/* Relative Effort Ring */}
+            <RelativeEffortBadge score={relativeEffort.score} label={relativeEffort.label} color={relativeEffort.color} />
           </div>
         </div>
       </div>
@@ -377,6 +509,9 @@ export default function App() {
           <StreakCard label="Cognitive" emoji="🧠" current={cognitiveStreak.current} best={cognitiveStreak.best} />
           <StreakCard label="Spiritual" emoji="🧘" current={spiritualStreak.current} best={spiritualStreak.best} />
         </div>
+
+        {/* 7-Day Effort Trend */}
+        <WeeklyEffortChart historicalLogs={historicalLogs} metrics={metrics} />
 
         {/* 90-Day Heatmap */}
         {heatmapData.length > 0 && (
