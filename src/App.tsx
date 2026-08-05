@@ -183,7 +183,7 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-28" preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ height: '120px' }} preserveAspectRatio="xMidYMid meet">
         {/* Baseline (average) */}
         {avgScore > 0 && (
           <line x1="0" y1={baselineY} x2={chartW} y2={baselineY}
