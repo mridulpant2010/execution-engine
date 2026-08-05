@@ -131,7 +131,7 @@ function RelativeEffortBadge({ score, label, color }: { score: number; label: st
   );
 }
 
-// ── Weekly Effort Chart (7-day bar chart) ──────────────────────
+// ── Weekly Effort Chart (bars + line graph + baseline) ─────────
 function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[]; metrics: any[] }) {
   const days = [];
   for (let i = 6; i >= 0; i--) {
@@ -142,29 +142,98 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
     days.push({ label: format(date, 'EEE')[0], score, dateStr, isToday: i === 0 });
   }
 
-  const maxScore = Math.max(...days.map(d => d.score), 1);
+  const maxScore = Math.max(...days.map(d => d.score), 30); // minimum ceiling of 30 for visual scaling
+  const avgScore = Math.round(days.reduce((sum, d) => sum + d.score, 0) / days.length);
+
+  // SVG dimensions
+  const chartW = 100; // percentage-based viewBox
+  const chartH = 80;
+  const barAreaTop = 14; // leave room for score labels
+  const barAreaBottom = 16; // leave room for day labels
+  const barAreaH = chartH - barAreaTop - barAreaBottom;
+  const barWidth = 8;
+  const gap = (chartW - barWidth * 7) / 8; // even spacing
+
+  // Compute bar positions & heights
+  const barData = days.map((day, i) => {
+    const x = gap + i * (barWidth + gap);
+    const centerX = x + barWidth / 2;
+    const h = day.score > 0 ? Math.max(3, (day.score / maxScore) * barAreaH) : 1.5;
+    const y = barAreaTop + barAreaH - h;
+    const color = day.score >= 100 ? '#FC4C02' : day.score >= 70 ? '#FC4C02cc' : day.score >= 35 ? '#34D399aa' : day.score > 0 ? '#3F3F46' : '#27272A';
+    return { ...day, x, centerX, y, h, color };
+  });
+
+  // Line graph points
+  const linePoints = barData.map(b => `${b.centerX},${b.y}`).join(' ');
+
+  // Baseline Y position
+  const baselineY = barAreaTop + barAreaH - (avgScore > 0 ? Math.max(3, (avgScore / maxScore) * barAreaH) : 0);
 
   return (
     <div className="rounded-2xl bg-surface border border-border p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Gauge className="w-4 h-4 text-strava" />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">7-Day Effort Trend</h2>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Gauge className="w-4 h-4 text-strava" />
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">7-Day Effort Trend</h2>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-px border-t border-dashed border-warning"></div>
+          <span className="text-[9px] font-semibold text-warning tabular-nums">AVG {avgScore}</span>
+        </div>
       </div>
-      <div className="flex items-end justify-between gap-1.5 h-20">
-        {days.map((day, i) => {
-          const heightPct = day.score > 0 ? Math.max(10, (day.score / maxScore) * 100) : 4;
-          const barColor = day.score >= 100 ? 'bg-strava' : day.score >= 70 ? 'bg-strava/80' : day.score >= 35 ? 'bg-success/60' : day.score > 0 ? 'bg-textMuted' : 'bg-border';
-          return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-[9px] text-textMuted font-semibold tabular-nums">{day.score > 0 ? day.score : ''}</span>
-              <div className="w-full rounded-t-md transition-all duration-500 ease-out" style={{ height: `${heightPct}%` }}>
-                <div className={`w-full h-full rounded-t-md ${barColor}`} />
-              </div>
-              <span className={`text-[10px] font-semibold ${day.isToday ? 'text-strava' : 'text-textMuted'}`}>{day.label}</span>
-            </div>
-          );
-        })}
-      </div>
+
+      <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-28" preserveAspectRatio="none">
+        {/* Baseline (average) */}
+        {avgScore > 0 && (
+          <line x1="0" y1={baselineY} x2={chartW} y2={baselineY}
+            stroke="#F59E0B" strokeWidth="0.4" strokeDasharray="1.5 1" opacity="0.6" />
+        )}
+
+        {/* Bars */}
+        {barData.map((b, i) => (
+          <g key={i}>
+            <rect x={b.x} y={b.y} width={barWidth} height={b.h} rx="1.2" fill={b.color}
+              className="transition-all duration-500" />
+          </g>
+        ))}
+
+        {/* Line graph connecting the tops of the bars */}
+        {barData.filter(b => b.score > 0).length >= 2 && (
+          <polyline
+            points={linePoints}
+            fill="none" stroke="#FC4C02" strokeWidth="0.6" strokeLinecap="round" strokeLinejoin="round"
+            opacity="0.8"
+          />
+        )}
+
+        {/* Dots at each data point */}
+        {barData.map((b, i) => (
+          b.score > 0 && (
+            <circle key={`dot-${i}`} cx={b.centerX} cy={b.y} r="1.2"
+              fill={b.isToday ? '#FC4C02' : '#fafafa'} stroke="#0a0a0a" strokeWidth="0.4" />
+          )
+        ))}
+
+        {/* Score labels above bars */}
+        {barData.map((b, i) => (
+          b.score > 0 && (
+            <text key={`score-${i}`} x={b.centerX} y={b.y - 2.5} textAnchor="middle"
+              className="fill-textSecondary" style={{ fontSize: '3.5px', fontWeight: 700, fontFamily: 'Inter, sans-serif' }}>
+              {b.score}
+            </text>
+          )
+        ))}
+
+        {/* Day labels below bars */}
+        {barData.map((b, i) => (
+          <text key={`label-${i}`} x={b.centerX} y={chartH - 3} textAnchor="middle"
+            className={b.isToday ? 'fill-strava' : 'fill-textMuted'}
+            style={{ fontSize: '3.8px', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>
+            {b.label}
+          </text>
+        ))}
+      </svg>
     </div>
   );
 }
