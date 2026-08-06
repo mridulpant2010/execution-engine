@@ -77,11 +77,16 @@ function computeRelativeEffort(logs: any[], metrics: any[]): { score: number; la
 
     // Base action scoring
     if (metric.type === 'boolean' && log.value_boolean) {
-      if (name.includes('hyrox') || name.includes('strength')) baseScore += 10;
-      else if (name.includes('kora') || name.includes('recall')) baseScore += 8;
-      else if (name.includes('prayer') || name.includes('naam') || name.includes('sleep by')) baseScore += 3;
-      else if (name.includes('eat')) baseScore += 3;
-      else baseScore += 5; // generic boolean habit
+      let rpeMultiplier = 1.0;
+      if (log.intensity_rpe) {
+        rpeMultiplier = log.intensity_rpe / 5.0;
+      }
+
+      if (name.includes('hyrox') || name.includes('strength')) baseScore += 10 * rpeMultiplier;
+      else if (name.includes('kora') || name.includes('recall')) baseScore += 8 * rpeMultiplier;
+      else if (name.includes('prayer') || name.includes('naam') || name.includes('sleep by')) baseScore += 3 * rpeMultiplier;
+      else if (name.includes('eat')) baseScore += 3 * rpeMultiplier;
+      else baseScore += 5 * rpeMultiplier; // generic boolean habit
     } else if (metric.type === 'numeric' && log.value_numeric > 0) {
       let rpeMultiplier = 1.0;
       if (log.intensity_rpe) {
@@ -304,14 +309,19 @@ function MetricCard({ metric, log, onToggle }: { metric: any; log: any; onToggle
       </div>
 
       {metric.type === 'boolean' && (
-        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-          isCompleted
-            ? isKryptonite
-              ? 'bg-danger border-danger'
-              : 'bg-strava border-strava'
-            : 'border-textMuted'
-        }`}>
-          {isCompleted && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+        <div className="flex flex-col items-end">
+          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+            isCompleted
+              ? isKryptonite
+                ? 'bg-danger border-danger'
+                : 'bg-strava border-strava'
+              : 'border-textMuted'
+          }`}>
+            {isCompleted && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+          </div>
+          {log && log.intensity_rpe && !isKryptonite && (
+            <span className="text-[10px] text-textSecondary font-semibold mt-1">RPE {log.intensity_rpe}</span>
+          )}
         </div>
       )}
 
@@ -346,9 +356,10 @@ export default function App() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // RPE and Numeric Input Modal State
-  const [activeNumericMetric, setActiveNumericMetric] = useState<any | null>(null);
+  // RPE and Input Modal State
+  const [activeMetric, setActiveMetric] = useState<any | null>(null);
   const [numericValue, setNumericValue] = useState<string>('');
+  const [booleanValue, setBooleanValue] = useState<boolean>(true);
   const [intensityRpe, setIntensityRpe] = useState<number>(5);
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -396,53 +407,81 @@ export default function App() {
 
   const handleToggle = async (metric: any, _isCompleted: boolean, existingLog: any) => {
     try {
-      if (metric.type === 'numeric') {
-        setActiveNumericMetric({ metric, existingLog });
-        setNumericValue(existingLog && existingLog.value_numeric !== null ? existingLog.value_numeric.toString() : '');
-        setIntensityRpe(existingLog && existingLog.intensity_rpe !== null ? existingLog.intensity_rpe : 5);
-      } else {
+      // Kryptonite leaks bypass RPE and toggle instantly
+      if (metric.is_kryptonite) {
         if (existingLog) await supabase.from('daily_logs').delete().eq('id', existingLog.id);
         else await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: selectedDateStr, value_boolean: true }]);
         await fetchData();
+        return;
+      }
+
+      // Open Willpower RPE modal for all positive habits (both boolean and numeric)
+      setActiveMetric({ metric, existingLog });
+      setIntensityRpe(existingLog && existingLog.intensity_rpe !== null ? existingLog.intensity_rpe : 5);
+      
+      if (metric.type === 'numeric') {
+        setNumericValue(existingLog && existingLog.value_numeric !== null ? existingLog.value_numeric.toString() : '');
+      } else {
+        setBooleanValue(existingLog ? existingLog.value_boolean : true);
       }
     } catch (err) { console.error("Toggle error:", err); }
   };
 
-  const handleSaveNumeric = async () => {
-    if (!activeNumericMetric) return;
-    const { metric, existingLog } = activeNumericMetric;
+  const handleSaveEntry = async () => {
+    if (!activeMetric) return;
+    const { metric, existingLog } = activeMetric;
     
-    // Allow deleting/resetting if empty
-    if (!numericValue.trim()) {
-      if (existingLog) {
-        await supabase.from('daily_logs').delete().eq('id', existingLog.id);
-      }
-      setActiveNumericMetric(null);
-      await fetchData();
-      return;
-    }
-
-    const numVal = parseFloat(numericValue);
-    if (isNaN(numVal)) return;
-
     try {
-      if (existingLog) {
-        await supabase.from('daily_logs')
-          .update({ value_numeric: numVal, intensity_rpe: intensityRpe })
-          .eq('id', existingLog.id);
+      if (metric.type === 'numeric') {
+        // Delete log if input is cleared
+        if (!numericValue.trim()) {
+          if (existingLog) await supabase.from('daily_logs').delete().eq('id', existingLog.id);
+          setActiveMetric(null);
+          await fetchData();
+          return;
+        }
+
+        const numVal = parseFloat(numericValue);
+        if (isNaN(numVal)) return;
+
+        if (existingLog) {
+          await supabase.from('daily_logs')
+            .update({ value_numeric: numVal, intensity_rpe: intensityRpe })
+            .eq('id', existingLog.id);
+        } else {
+          await supabase.from('daily_logs')
+            .insert([{ 
+              metric_id: metric.id, 
+              log_date: selectedDateStr, 
+              value_numeric: numVal,
+              intensity_rpe: intensityRpe
+            }]);
+        }
       } else {
-        await supabase.from('daily_logs')
-          .insert([{ 
-            metric_id: metric.id, 
-            log_date: selectedDateStr, 
-            value_numeric: numVal,
-            intensity_rpe: intensityRpe
-          }]);
+        // Positive Boolean metric
+        if (!booleanValue) {
+          // If untoggled in modal, delete entry
+          if (existingLog) await supabase.from('daily_logs').delete().eq('id', existingLog.id);
+        } else {
+          if (existingLog) {
+            await supabase.from('daily_logs')
+              .update({ value_boolean: true, intensity_rpe: intensityRpe })
+              .eq('id', existingLog.id);
+          } else {
+            await supabase.from('daily_logs')
+              .insert([{ 
+                metric_id: metric.id, 
+                log_date: selectedDateStr, 
+                value_boolean: true,
+                intensity_rpe: intensityRpe
+              }]);
+          }
+        }
       }
-      setActiveNumericMetric(null);
+      setActiveMetric(null);
       await fetchData();
     } catch (err) {
-      console.error("Save numeric error:", err);
+      console.error("Save entry error:", err);
     }
   };
 
@@ -773,13 +812,13 @@ export default function App() {
       </div>
 
       {/* ── NUMERIC VALUE & WILLPOWER RPE MODAL ───────────────── */}
-      {activeNumericMetric && (
+      {activeMetric && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-surface border border-border w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-black uppercase text-sm text-textPrimary tracking-wider">Log Metric</h3>
               <button 
-                onClick={() => setActiveNumericMetric(null)}
+                onClick={() => setActiveMetric(null)}
                 className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center hover:bg-border transition-colors"
               >
                 <X className="w-4 h-4 text-textSecondary" />
@@ -787,22 +826,34 @@ export default function App() {
             </div>
 
             <p className="text-xs text-textSecondary font-bold uppercase tracking-wider mb-2">
-              {activeNumericMetric.metric.name}
+              {activeMetric.metric.name}
             </p>
 
             <div className="space-y-4">
-              {/* Numeric Input */}
-              <div>
-                <input
-                  type="number"
-                  step="any"
-                  value={numericValue}
-                  onChange={e => setNumericValue(e.target.value)}
-                  placeholder="Enter numeric value..."
-                  className="w-full bg-background border border-border rounded-xl p-3 text-lg font-bold focus:outline-none focus:border-strava transition-colors text-white"
-                  autoFocus
-                />
-              </div>
+              {/* Conditional Input based on Metric Type */}
+              {activeMetric.metric.type === 'numeric' ? (
+                <div>
+                  <input
+                    type="number"
+                    step="any"
+                    value={numericValue}
+                    onChange={e => setNumericValue(e.target.value)}
+                    placeholder="Enter numeric value..."
+                    className="w-full bg-background border border-border rounded-xl p-3 text-lg font-bold focus:outline-none focus:border-strava transition-colors text-white"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-surface-elevated p-4 rounded-xl border border-border">
+                  <span className="text-sm font-semibold text-textPrimary">Mark Completed</span>
+                  <input
+                    type="checkbox"
+                    checked={booleanValue}
+                    onChange={e => setBooleanValue(e.target.checked)}
+                    className="w-5 h-5 accent-strava cursor-pointer"
+                  />
+                </div>
+              )}
 
               {/* RPE Slider */}
               <div className="bg-surface-elevated p-4 rounded-xl border border-border">
@@ -828,16 +879,16 @@ export default function App() {
               {/* Action Buttons */}
               <div className="flex gap-2">
                 <button
-                  onClick={handleSaveNumeric}
+                  onClick={handleSaveEntry}
                   className="flex-1 bg-strava text-white font-bold py-3 rounded-xl text-sm hover:bg-strava-dark transition-colors"
                 >
                   Save Entry
                 </button>
-                {activeNumericMetric.existingLog && (
+                {activeMetric.existingLog && (
                   <button
                     onClick={async () => {
-                      await supabase.from('daily_logs').delete().eq('id', activeNumericMetric.existingLog.id);
-                      setActiveNumericMetric(null);
+                      await supabase.from('daily_logs').delete().eq('id', activeMetric.existingLog.id);
+                      setActiveMetric(null);
                       await fetchData();
                     }}
                     className="bg-danger/25 text-danger font-bold px-4 py-3 rounded-xl text-sm hover:bg-danger/30 transition-colors"
