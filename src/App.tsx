@@ -253,19 +253,26 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
 function StreakCard({ label, emoji, current, best }: { label: string; emoji: string; current: number; best: number }) {
   const isOnFire = current >= 3;
   return (
-    <div className={`rounded-2xl p-4 border transition-all ${isOnFire ? 'border-strava/30 bg-strava/5' : 'border-border bg-surface'}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">{emoji}</span>
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">{label}</span>
+    <div className={`rounded-2xl p-3 md:p-4 border transition-all ${isOnFire ? 'border-strava/30 bg-strava/5' : 'border-border bg-surface'}`}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-base">{emoji}</span>
+        <span className="text-[10px] md:text-[11px] font-bold uppercase tracking-wider text-textSecondary truncate">{label}</span>
       </div>
-      <div className="flex items-end justify-between">
-        <div className="flex items-end gap-1">
-          <span className={`text-3xl font-black tabular-nums ${isOnFire ? 'text-strava' : 'text-textPrimary'}`}>{current}</span>
-          {isOnFire && <Zap className="w-4 h-4 text-strava mb-1.5" />}
+      <div className="flex items-end justify-between gap-1">
+        <div>
+          <div className="flex items-center gap-1">
+            <span className={`text-2xl md:text-3xl font-black tabular-nums ${isOnFire ? 'text-strava' : 'text-textPrimary'}`}>{current}</span>
+            <span className="text-[10px] text-textMuted font-bold uppercase">d</span>
+            {isOnFire && <Zap className="w-3.5 h-3.5 text-strava" />}
+          </div>
+          <span className="text-[9px] font-bold uppercase text-textMuted tracking-wider block -mt-1">Streak</span>
         </div>
-        <div className="flex items-center gap-1">
-          <Trophy className="w-3 h-3 text-textMuted" />
-          <span className="text-xs font-semibold text-textMuted tabular-nums">{best}</span>
+        <div className="text-right">
+          <div className="flex items-center justify-end gap-1">
+            <Trophy className="w-3 h-3 text-amber-500/80" />
+            <span className="text-xs md:text-sm font-bold text-textSecondary tabular-nums">{best}d</span>
+          </div>
+          <span className="text-[9px] font-bold uppercase text-textMuted tracking-wider block -mt-0.5">Best</span>
         </div>
       </div>
     </div>
