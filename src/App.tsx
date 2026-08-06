@@ -414,15 +414,18 @@ export default function App() {
 
   const handleToggle = async (metric: any, _isCompleted: boolean, existingLog: any) => {
     try {
-      // Kryptonite leaks bypass RPE and toggle instantly
-      if (metric.is_kryptonite) {
+      const name = metric.name.toLowerCase();
+      const isRoutineHabit = name.includes('sleep') || name.includes('prayer') || name.includes('naam') || name.includes('eat');
+
+      // Kryptonite leaks OR routine habits toggle instantly on click without RPE modal
+      if (metric.is_kryptonite || isRoutineHabit) {
         if (existingLog) await supabase.from('daily_logs').delete().eq('id', existingLog.id);
         else await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: selectedDateStr, value_boolean: true }]);
         await fetchData();
         return;
       }
 
-      // Open Willpower RPE modal for all positive habits (both boolean and numeric)
+      // Open Willpower RPE modal for high-friction habits and numeric metrics
       setActiveMetric({ metric, existingLog });
       setIntensityRpe(existingLog && existingLog.intensity_rpe !== null ? existingLog.intensity_rpe : 5);
       
