@@ -45,6 +45,76 @@ const SYSTEM_DESIGN_CHALLENGES = [
     prompt: 'You need a distributed lock for a payment ledger to prevent double-spending. Why can Redis Redlock fail under long Java/Python GC pauses?',
     keyConcepts: ['gc', 'pause', 'fencing', 'token', 'lease', 'expired', 'monotonic', 'zookeeper', 'consensus'],
     goldenRule: 'Always use monotonically increasing fencing tokens at the storage layer to invalidate stale lock holders.'
+  },
+  {
+    id: 'saga-pattern',
+    title: 'Distributed Ledger & Microservice Transactions',
+    prompt: 'You are processing a payment involving 4 microservices (Order, Payment, Inventory, Delivery). Why is 2-Phase Commit (2PC) unsuitable for high availability, and how does the Saga pattern help?',
+    keyConcepts: ['saga', 'compensating', '2pc', 'lock', 'blocking', 'event', 'orchestration', 'choreography'],
+    goldenRule: 'Avoid blocking 2PC across microservices; use Sagas with compensating transactions for eventual consistency.'
+  },
+  {
+    id: 'leaderboard',
+    title: 'Real-time Gaming Leaderboard',
+    prompt: 'Design a real-time leaderboard for 50M active users showing Top 100 global ranks and user relative rank. Why does traditional relational DB indexing fail at 100k QPS?',
+    keyConcepts: ['zset', 'redis', 'skip', 'list', 'log', 'rank', 'partition', 'shard'],
+    goldenRule: 'Use Redis Sorted Sets (ZSET) with skip lists for logarithmic O(log N) rank lookups and updates.'
+  },
+  {
+    id: 'geospatial-uber',
+    title: 'Geospatial Driver Matching (Uber/Tinder)',
+    prompt: 'Design a driver location tracking service updating 1M active driver coordinates every 4 seconds. How do you efficiently query drivers within a 3km radius without scanning all DB rows?',
+    keyConcepts: ['geohash', 'quadtree', 'spatial', 'index', 'radius', 'in-memory', 'pubsub'],
+    goldenRule: 'Index dynamic locations using Geohashing or QuadTrees in memory rather than querying B-tree relational indexes.'
+  },
+  {
+    id: 'notification-engine',
+    title: 'Push Notification Gateway at Scale',
+    prompt: 'Design a push notification gateway delivering 100M alerts/day via Apple APNS & Android FCM. How do you prevent duplicate pushes if APNS drops the connection midway?',
+    keyConcepts: ['idempotency', 'dedup', 'ack', 'queue', 'retry', 'exponential', 'backoff', 'token'],
+    goldenRule: 'Attach unique idempotency keys to every notification payload and enforce deduplication at the worker queue.'
+  },
+  {
+    id: 'cdc-pipeline',
+    title: 'Change Data Capture (CDC) & Outbox Pattern',
+    prompt: 'You need to update Elasticsearch whenever a SQL database record changes. Why is updating ES directly inside the HTTP request handler a dangerous anti-pattern?',
+    keyConcepts: ['outbox', 'cdc', 'debezium', 'wal', 'atomicity', 'dual-write', 'transaction', 'eventual'],
+    goldenRule: 'Avoid dual-write race conditions in application code; use the Transactional Outbox Pattern with CDC streaming.'
+  },
+  {
+    id: 'blob-storage',
+    title: 'Distributed Object Storage (S3 Architecture)',
+    prompt: 'Design a high-scale Blob Storage service for multi-gigabyte video uploads. How do you ensure high durability without multiplying storage costs by 3x replication?',
+    keyConcepts: ['erasure', 'coding', 'chunk', 'multipart', 'metadata', 'reed-solomon', 'data', 'parity'],
+    goldenRule: 'Use Erasure Coding (e.g. Reed-Solomon 8+4) to achieve 99.999999999% durability at 1.5x storage overhead.'
+  },
+  {
+    id: 'search-engine',
+    title: 'Distributed Search (Inverted Index Sharding)',
+    prompt: 'Design an inverted index search engine for 1 Billion articles. Should you shard by Document ID or by Term, and why?',
+    keyConcepts: ['inverted', 'index', 'document', 'term', 'shard', 'scatter', 'gather', 'segment'],
+    goldenRule: 'Shard by Document ID (scatter-gather) for balanced index updates and parallel query execution across nodes.'
+  },
+  {
+    id: 'crdt-collaborative',
+    title: 'Real-Time Collaborative Doc Editor',
+    prompt: 'Design a real-time collaborative document editor like Google Docs. How do you resolve concurrent edits when two users type at the exact same position offline?',
+    keyConcepts: ['crdt', 'ot', 'operational', 'transformation', 'conflict', 'vector', 'clock', 'sequence'],
+    goldenRule: 'Use Conflict-free Replicated Data Types (CRDTs) or Operational Transformation (OT) for deterministic convergence.'
+  },
+  {
+    id: 'metrics-tsdb',
+    title: 'Time-Series Monitoring (Prometheus TSDB)',
+    prompt: 'Design a metrics engine collecting 100k server metrics every 10 seconds. Why do traditional B-Trees degrade under continuous time-series writes?',
+    keyConcepts: ['tsdb', 'append', 'lsm', 'tree', 'downsample', 'wal', 'write-ahead', 'chunk', 'compression'],
+    goldenRule: 'Use append-only time-series chunking with Delta-of-Delta compression rather than B-Tree random disk updates.'
+  },
+  {
+    id: 'db-sharding-rebalance',
+    title: 'Database Sharding & Zero-Downtime Rebalancing',
+    prompt: 'Your database is sharded across 16 PostgreSQL nodes using Hash Sharding (`hash(user_id) % 16`). You need to scale to 32 nodes. How do you rebalance without full downtime?',
+    keyConcepts: ['consistent', 'hashing', 'virtual', 'nodes', 'dual', 'read', 'cdc', 'shadow', 'migration'],
+    goldenRule: 'Use Consistent Hashing or virtual shards mapped to physical nodes to minimize key migration during cluster scaling.'
   }
 ];
 
@@ -678,13 +748,47 @@ export default function App() {
     await fetchData();
   };
 
-  const handleStartChallenge = () => {
-    // Pick today's challenge deterministically or randomly
-    const idx = Math.abs(selectedDateStr.split('-').reduce((acc, curr) => acc + parseInt(curr), 0)) % SYSTEM_DESIGN_CHALLENGES.length;
-    const challenge = SYSTEM_DESIGN_CHALLENGES[idx];
-    setActiveChallenge(challenge);
-    setChallengeResponse(todayChallengeLog ? todayChallengeLog.user_response : '');
-    setChallengeFeedback(todayChallengeLog ? todayChallengeLog.ai_feedback : null);
+  const handleStartChallenge = (requestedId?: string) => {
+    // If an explicit ID is requested (e.g. user clicked "Next Question"), pick that
+    if (requestedId) {
+      const nextChallenge = SYSTEM_DESIGN_CHALLENGES.find(c => c.id === requestedId) || SYSTEM_DESIGN_CHALLENGES[0];
+      setActiveChallenge(nextChallenge);
+      setChallengeResponse('');
+      setChallengeFeedback(null);
+      return;
+    }
+
+    // If today already has a saved log and we are just reviewing
+    if (todayChallengeLog && todayChallengeLog.challenge_title) {
+      const existing = SYSTEM_DESIGN_CHALLENGES.find(c => c.title === todayChallengeLog.challenge_title);
+      if (existing) {
+        setActiveChallenge(existing);
+        setChallengeResponse(todayChallengeLog.user_response);
+        setChallengeFeedback(todayChallengeLog.ai_feedback);
+        return;
+      }
+    }
+
+    // Unseen question selection: filter out questions user has already completed in historical challenges
+    const answeredTitles = new Set(historicalChallenges.map(c => c.challenge_title));
+    const unseen = SYSTEM_DESIGN_CHALLENGES.filter(c => !answeredTitles.has(c.title));
+
+    const pool = unseen.length > 0 ? unseen : SYSTEM_DESIGN_CHALLENGES;
+    // Pick a random question from the unseen pool
+    const randomChallenge = pool[Math.floor(Math.random() * pool.length)];
+
+    setActiveChallenge(randomChallenge);
+    setChallengeResponse('');
+    setChallengeFeedback(null);
+  };
+
+  const handleNextChallenge = () => {
+    const currentIndex = SYSTEM_DESIGN_CHALLENGES.findIndex(c => c.id === activeChallenge?.id);
+    const nextIndex = (currentIndex + 1) % SYSTEM_DESIGN_CHALLENGES.length;
+    const nextChallenge = SYSTEM_DESIGN_CHALLENGES[nextIndex];
+    setActiveChallenge(nextChallenge);
+    setChallengeResponse('');
+    setChallengeFeedback(null);
   };
 
   const handleEvaluateChallenge = async () => {
@@ -1044,12 +1148,21 @@ export default function App() {
                 <Sparkles className="w-4 h-4 text-blue-400" />
                 <span className="font-black uppercase text-xs text-blue-400 tracking-wider">60-Second Architect Challenge</span>
               </div>
-              <button 
-                onClick={() => { setActiveChallenge(null); setChallengeFeedback(null); }}
-                className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center hover:bg-border transition-colors"
-              >
-                <X className="w-4 h-4 text-textSecondary" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleNextChallenge}
+                  className="text-[10px] bg-surface-elevated text-blue-400 hover:bg-border font-bold px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                  title="Try a different question"
+                >
+                  🔄 Next Question
+                </button>
+                <button 
+                  onClick={() => { setActiveChallenge(null); setChallengeFeedback(null); }}
+                  className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center hover:bg-border transition-colors"
+                >
+                  <X className="w-4 h-4 text-textSecondary" />
+                </button>
+              </div>
             </div>
 
             <h3 className="text-base font-black text-white mb-2">{activeChallenge.title}</h3>
