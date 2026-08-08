@@ -181,9 +181,47 @@ function RelativeEffortBadge({ score, label, color }: { score: number; label: st
   );
 }
 
-// ── Effort Trend Chart (7D / 30D / 1Y toggle + line graph + baseline) ─────────
-function EffortTrendChart({ historicalLogs, metrics }: { historicalLogs: any[]; metrics: any[] }) {
+// ── Effort & Skill Drilldown Chart (7D / 30D / 1Y + Skill Drilldown Filter) ─────────
+function EffortTrendChart({ 
+  historicalLogs, 
+  metrics,
+  historicalBuilds = [],
+  historicalChallenges = []
+}: { 
+  historicalLogs: any[]; 
+  metrics: any[];
+  historicalBuilds?: any[];
+  historicalChallenges?: any[];
+}) {
   const [timeframe, setTimeframe] = useState<'7D' | '30D' | '1Y'>('7D');
+  const [selectedMetricId, setSelectedMetricId] = useState<string>('overall');
+
+  // Compute daily metric value depending on selected filter
+  const getMetricScoreForDay = (dateStr: string) => {
+    if (selectedMetricId === 'overall') {
+      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
+      return computeRelativeEffort(dayLogs, metrics).score;
+    }
+    if (selectedMetricId === 'builds') {
+      return historicalBuilds.filter(b => b.log_date === dateStr).length;
+    }
+    if (selectedMetricId === 'challenges') {
+      const dayChallenges = historicalChallenges.filter(c => c.log_date === dateStr);
+      if (dayChallenges.length === 0) return 0;
+      const sum = dayChallenges.reduce((acc, c) => acc + (c.score || 0), 0);
+      return Math.round(sum / dayChallenges.length);
+    }
+    
+    // Specific metric from DB
+    const mLog = historicalLogs.find(l => l.metric_id === selectedMetricId && l.log_date === dateStr);
+    if (!mLog) return 0;
+    const metricObj = metrics.find(m => m.id === selectedMetricId);
+    if (!metricObj) return 0;
+
+    if (metricObj.type === 'numeric') return mLog.value_numeric || 0;
+    if (metricObj.type === 'boolean') return mLog.value_boolean ? 1 : 0;
+    return 0;
+  };
 
   const days: { label: string; score: number; isCurrent?: boolean }[] = [];
 
@@ -191,16 +229,14 @@ function EffortTrendChart({ historicalLogs, metrics }: { historicalLogs: any[]; 
     for (let i = 6; i >= 0; i--) {
       const date = subDays(new Date(), i);
       const dateStr = format(date, 'yyyy-MM-dd');
-      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
-      const { score } = computeRelativeEffort(dayLogs, metrics);
+      const score = getMetricScoreForDay(dateStr);
       days.push({ label: format(date, 'EEE')[0], score, isCurrent: i === 0 });
     }
   } else if (timeframe === '30D') {
     for (let i = 29; i >= 0; i--) {
       const date = subDays(new Date(), i);
       const dateStr = format(date, 'yyyy-MM-dd');
-      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
-      const { score } = computeRelativeEffort(dayLogs, metrics);
+      const score = getMetricScoreForDay(dateStr);
       const label = i === 0 ? 'Today' : i % 5 === 0 ? format(date, 'd') : '';
       days.push({ label, score, isCurrent: i === 0 });
     }
@@ -208,22 +244,35 @@ function EffortTrendChart({ historicalLogs, metrics }: { historicalLogs: any[]; 
     for (let i = 11; i >= 0; i--) {
       const date = subMonths(new Date(), i);
       const monthPrefix = format(date, 'yyyy-MM');
-      const monthLogs = historicalLogs.filter(l => l.log_date.startsWith(monthPrefix));
       
-      const uniqueDays = new Set(monthLogs.map(l => l.log_date));
-      let monthTotalScore = 0;
-      uniqueDays.forEach(dayStr => {
-        const dLogs = monthLogs.filter(l => l.log_date === dayStr);
-        monthTotalScore += computeRelativeEffort(dLogs, metrics).score;
-      });
-      const avgMonthScore = uniqueDays.size > 0 ? Math.round(monthTotalScore / uniqueDays.size) : 0;
-      
-      days.push({ label: format(date, 'MMM'), score: avgMonthScore, isCurrent: i === 0 });
+      if (selectedMetricId === 'builds') {
+        const count = historicalBuilds.filter(b => b.log_date.startsWith(monthPrefix)).length;
+        days.push({ label: format(date, 'MMM'), score: count, isCurrent: i === 0 });
+      } else if (selectedMetricId === 'challenges') {
+        const monthChallenges = historicalChallenges.filter(c => c.log_date.startsWith(monthPrefix));
+        const avg = monthChallenges.length > 0 ? Math.round(monthChallenges.reduce((acc, c) => acc + (c.score || 0), 0) / monthChallenges.length) : 0;
+        days.push({ label: format(date, 'MMM'), score: avg, isCurrent: i === 0 });
+      } else {
+        const monthLogs = historicalLogs.filter(l => l.log_date.startsWith(monthPrefix));
+        const uniqueDays = new Set(monthLogs.map(l => l.log_date));
+        let monthTotalScore = 0;
+        uniqueDays.forEach(dayStr => {
+          monthTotalScore += getMetricScoreForDay(dayStr);
+        });
+        const mObj = metrics.find(m => m.id === selectedMetricId);
+        const isSumMetric = mObj && mObj.type === 'numeric';
+        const finalMonthScore = isSumMetric ? Math.round(monthTotalScore) : (uniqueDays.size > 0 ? Math.round(monthTotalScore / uniqueDays.size) : 0);
+        days.push({ label: format(date, 'MMM'), score: finalMonthScore, isCurrent: i === 0 });
+      }
     }
   }
 
-  const maxScore = Math.max(...days.map(d => d.score), 30);
-  const avgScore = Math.round(days.reduce((sum, d) => sum + d.score, 0) / (days.length || 1));
+  const maxScore = Math.max(...days.map(d => d.score), selectedMetricId === 'overall' ? 30 : 5);
+  const totalSum = days.reduce((sum, d) => sum + d.score, 0);
+  const avgScore = Number((totalSum / (days.length || 1)).toFixed(1));
+
+  const activeMetricObj = metrics.find(m => m.id === selectedMetricId);
+  const filterUnit = selectedMetricId === 'overall' ? 'PTS' : selectedMetricId === 'builds' ? 'Builds' : selectedMetricId === 'challenges' ? '/10' : activeMetricObj?.type === 'numeric' ? '' : 'Days';
 
   const chartW = 100;
   const chartH = 80;
@@ -239,7 +288,9 @@ function EffortTrendChart({ historicalLogs, metrics }: { historicalLogs: any[]; 
     const centerX = x + barWidth / 2;
     const h = day.score > 0 ? Math.max(3, (day.score / maxScore) * barAreaH) : 1.5;
     const y = barAreaTop + barAreaH - h;
-    const color = day.score >= 100 ? '#FC4C02' : day.score >= 70 ? '#FC4C02cc' : day.score >= 35 ? '#34D399aa' : day.score > 0 ? '#3F3F46' : '#27272A';
+    const color = selectedMetricId === 'overall'
+      ? (day.score >= 100 ? '#FC4C02' : day.score >= 70 ? '#FC4C02cc' : day.score >= 35 ? '#34D399aa' : day.score > 0 ? '#3F3F46' : '#27272A')
+      : (day.score > 0 ? '#FC4C02' : '#27272A');
     return { ...day, x, centerX, y, h, color };
   });
 
@@ -250,16 +301,29 @@ function EffortTrendChart({ historicalLogs, metrics }: { historicalLogs: any[]; 
     <div className="rounded-2xl bg-surface border border-border p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Gauge className="w-4 h-4 text-strava" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">
-            {timeframe === '7D' ? '7-Day Effort Trend' : timeframe === '30D' ? '30-Day Effort Trend' : '1-Year Monthly Average'}
-          </h2>
+          <Gauge className="w-4 h-4 text-strava shrink-0" />
+          <select
+            value={selectedMetricId}
+            onChange={e => setSelectedMetricId(e.target.value)}
+            className="bg-surface-elevated border border-border text-xs font-bold text-textPrimary rounded-lg p-1.5 focus:outline-none focus:border-strava cursor-pointer"
+          >
+            <option value="overall">⚡ Overall Relative Effort</option>
+            <option value="builds">🔨 What You Built (Builds)</option>
+            <option value="challenges">🎯 System Design AI Loops</option>
+            <optgroup label="Engine Metrics">
+              {metrics.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.category === 'Physical' ? '🏃' : m.category === 'Cognitive' ? '🧠' : '🧘'} {m.name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
         </div>
         
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-px border-t border-dashed border-warning"></div>
-            <span className="text-[9px] font-semibold text-warning tabular-nums">AVG {avgScore}</span>
+            <span className="text-[9px] font-semibold text-warning tabular-nums">AVG {avgScore} {filterUnit}</span>
           </div>
 
           <div className="flex bg-surface-elevated p-0.5 rounded-lg border border-border">
@@ -439,6 +503,8 @@ export default function App() {
   const [metrics, setMetrics] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [historicalLogs, setHistoricalLogs] = useState<any[]>([]);
+  const [historicalBuilds, setHistoricalBuilds] = useState<any[]>([]);
+  const [historicalChallenges, setHistoricalChallenges] = useState<any[]>([]);
   const [interstitialLogs, setInterstitialLogs] = useState<any[]>([]);
   const [todayBuild, setTodayBuild] = useState<any>(null);
   const [buildText, setBuildText] = useState('');
@@ -496,9 +562,14 @@ export default function App() {
       .eq('log_date', selectedDateStr)
       .maybeSingle();
 
+    const { data: allBuilds } = await supabase.from('build_logs').select('*').gte('log_date', historyStart);
+    const { data: allChallenges } = await supabase.from('skill_challenges').select('*').gte('log_date', historyStart);
+
     if (metricsData) setMetrics(metricsData);
     if (logsData) setLogs(logsData);
     if (historyData) setHistoricalLogs(historyData);
+    if (allBuilds) setHistoricalBuilds(allBuilds);
+    if (allChallenges) setHistoricalChallenges(allChallenges);
     if (intLogsData) setInterstitialLogs(intLogsData);
     setTodayBuild(buildData || null);
     setTodayChallengeLog(challengeData || null);
@@ -819,8 +890,13 @@ export default function App() {
           <StreakCard label="Spiritual" emoji="🧘" current={spiritualStreak.current} best={spiritualStreak.best} />
         </div>
 
-        {/* Unified Multi-Timeframe Effort Trend (7D / 30D / 1Y) */}
-        <EffortTrendChart historicalLogs={historicalLogs} metrics={metrics} />
+        {/* Unified Multi-Timeframe & Skill Drilldown Trend (7D / 30D / 1Y) */}
+        <EffortTrendChart 
+          historicalLogs={historicalLogs} 
+          metrics={metrics}
+          historicalBuilds={historicalBuilds}
+          historicalChallenges={historicalChallenges}
+        />
 
         {/* Physical Engine */}
         <section>
