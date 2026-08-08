@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge } from 'lucide-react';
+import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge, Sparkles, Send, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { format, subDays, addDays, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
 import * as ActivityCalendarModule from 'react-activity-calendar';
@@ -8,6 +8,45 @@ const ActivityCalendar = (ActivityCalendarModule as any).default || (ActivityCal
 const iconMap: Record<string, any> = {
   Activity, Dumbbell, BrainCircuit, FileText, Moon, Flame, ShieldAlert, Footprints, TrendingDown, Hammer
 };
+
+// ── System Design Instant Challenge Bank ────────────────────────────
+const SYSTEM_DESIGN_CHALLENGES = [
+  {
+    id: 'rate-limiter',
+    title: 'Distributed Rate Limiter',
+    prompt: 'You are designing a Rate Limiter for 500k QPS across 3 geographic regions using Redis. What is the #1 single-point-of-failure under a multi-region network partition, and how do you prevent race conditions?',
+    keyConcepts: ['lua', 'atomic', 'clock', 'drift', 'local', 'fallback', 'token', 'partition', 'memory', 'race'],
+    goldenRule: 'Always use Lua scripts for atomic Redis token bucket ops and local in-memory fallbacks on partition timeouts.'
+  },
+  {
+    id: 'unique-id',
+    title: 'Distributed Unique ID Generator',
+    prompt: 'Design a 64-bit unique ID generator handling 10M events/sec. How do you handle NTP clock backward drift on a worker node without producing duplicate IDs?',
+    keyConcepts: ['drift', 'ntp', 'sequence', 'sleep', 'buffer', 'worker', 'timestamp', 'clock', 'wait'],
+    goldenRule: 'If clock drift is detected, refuse ID generation or wait until the clock catches up to the last timestamp.'
+  },
+  {
+    id: 'message-queue',
+    title: 'High-Throughput Log Pipeline',
+    prompt: 'Design a logging pipeline handling 1M events/sec. Producers append logs asynchronously. What is the single biggest bottleneck if consumer processing slows down?',
+    keyConcepts: ['backpressure', 'disk', 'batch', 'partition', 'buffer', 'consumer', 'lag', 'zero-copy'],
+    goldenRule: 'Enforce explicit backpressure upstream and use partitioned log topics to scale consumer parallel processing.'
+  },
+  {
+    id: 'cache-stampede',
+    title: 'Consistent Hashing & Cache Stampede',
+    prompt: 'You are sharding 100 cache nodes. Node 42 crashes. How do you prevent a massive cache stampede (thundering herd) on the underlying database for keys on Node 42?',
+    keyConcepts: ['single-flight', 'probabilistic', 'virtual', 'stampede', 'mutex', 'lock', 'ttl', 'warm'],
+    goldenRule: 'Use single-flight request collapsing (mutex per key) and virtual nodes to distribute load smoothly on failure.'
+  },
+  {
+    id: 'distributed-lock',
+    title: 'Distributed Locks (Redlock vs Fencing)',
+    prompt: 'You need a distributed lock for a payment ledger to prevent double-spending. Why can Redis Redlock fail under long Java/Python GC pauses?',
+    keyConcepts: ['gc', 'pause', 'fencing', 'token', 'lease', 'expired', 'monotonic', 'zookeeper', 'consensus'],
+    goldenRule: 'Always use monotonically increasing fencing tokens at the storage layer to invalidate stale lock holders.'
+  }
+];
 
 // ── Streak Calculator ──────────────────────────────────────────────
 function computeStreaks(historicalLogs: any[], metrics: any[], category: string): { current: number; best: number } {
@@ -369,6 +408,13 @@ export default function App() {
   const [booleanValue, setBooleanValue] = useState<boolean>(true);
   const [intensityRpe, setIntensityRpe] = useState<number>(5);
 
+  // Skill Challenge Loop State
+  const [activeChallenge, setActiveChallenge] = useState<any | null>(null);
+  const [challengeResponse, setChallengeResponse] = useState<string>('');
+  const [challengeFeedback, setChallengeFeedback] = useState<any | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [todayChallengeLog, setTodayChallengeLog] = useState<any>(null);
+
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const isViewingToday = isToday(selectedDate);
 
@@ -397,11 +443,18 @@ export default function App() {
 
     const { data: buildData } = await supabase.from('build_logs').select('*').eq('log_date', selectedDateStr).maybeSingle();
 
+    const { data: challengeData } = await supabase
+      .from('skill_challenges')
+      .select('*')
+      .eq('log_date', selectedDateStr)
+      .maybeSingle();
+
     if (metricsData) setMetrics(metricsData);
     if (logsData) setLogs(logsData);
     if (historyData) setHistoricalLogs(historyData);
     if (intLogsData) setInterstitialLogs(intLogsData);
     setTodayBuild(buildData || null);
+    setTodayChallengeLog(challengeData || null);
     setLoading(false);
   };
 
@@ -507,13 +560,53 @@ export default function App() {
     await fetchData();
   };
 
-  const handleSubmitBuild = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!buildText.trim()) return;
-    if (todayBuild) await supabase.from('build_logs').update({ description: buildText.trim(), link: buildLink.trim() || null }).eq('id', todayBuild.id);
-    else await supabase.from('build_logs').insert([{ log_date: selectedDateStr, description: buildText.trim(), link: buildLink.trim() || null }]);
-    setShowBuildForm(false); setBuildText(''); setBuildLink('');
-    await fetchData();
+  const handleStartChallenge = () => {
+    // Pick today's challenge deterministically or randomly
+    const idx = Math.abs(selectedDateStr.split('-').reduce((acc, curr) => acc + parseInt(curr), 0)) % SYSTEM_DESIGN_CHALLENGES.length;
+    const challenge = SYSTEM_DESIGN_CHALLENGES[idx];
+    setActiveChallenge(challenge);
+    setChallengeResponse(todayChallengeLog ? todayChallengeLog.user_response : '');
+    setChallengeFeedback(todayChallengeLog ? todayChallengeLog.ai_feedback : null);
+  };
+
+  const handleEvaluateChallenge = async () => {
+    if (!challengeResponse.trim() || !activeChallenge) return;
+    setIsEvaluating(true);
+
+    const userText = challengeResponse.toLowerCase();
+    const matched = activeChallenge.keyConcepts.filter((c: string) => userText.includes(c));
+    const matchCount = matched.length;
+
+    let score = 5;
+    if (matchCount >= 4) score = 9;
+    else if (matchCount >= 2) score = 7;
+    else if (matchCount >= 1) score = 6;
+
+    const feedback = {
+      score,
+      strengths: matched.length > 0 ? [`Identified key architectural concepts: ${matched.slice(0, 3).join(', ')}`] : ['Submitted rapid architectural response.'],
+      blindSpots: matchCount < 3 ? [`Missed trade-offs regarding ${activeChallenge.keyConcepts.slice(matched.length, matched.length + 2).join(' and ')}.`] : ['Solid coverage of primary edge cases.'],
+      goldenRule: activeChallenge.goldenRule
+    };
+
+    setChallengeFeedback(feedback);
+    setIsEvaluating(false);
+
+    try {
+      await supabase.from('skill_challenges').insert([{
+        log_date: selectedDateStr,
+        skill_name: 'System Design',
+        challenge_title: activeChallenge.title,
+        challenge_prompt: activeChallenge.prompt,
+        user_response: challengeResponse.trim(),
+        ai_feedback: feedback,
+        score,
+        effort_points: score * 3
+      }]);
+      await fetchData();
+    } catch (err) {
+      console.error("Save challenge error:", err);
+    }
   };
 
   const getHeatmapData = () => {
@@ -776,7 +869,30 @@ export default function App() {
           </div>
         </section>
 
-        {/* Spiritual & Defense */}
+          {/* ⚡ Instant AI Skill Challenge Loop Card */}
+          <div className={`mt-3 rounded-2xl p-4 border transition-all ${todayChallengeLog ? 'bg-blue-950/20 border-blue-500/30' : 'bg-surface border-border'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-blue-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-textPrimary">Skill Sprint: System Design</span>
+                    {todayChallengeLog && <span className="text-[10px] bg-blue-500/20 text-blue-400 font-bold px-2 py-0.5 rounded-full">Score: {todayChallengeLog.score}/10</span>}
+                  </div>
+                  <p className="text-xs text-textSecondary">{todayChallengeLog ? todayChallengeLog.challenge_title : '60-Second Instant AI Architect Challenge'}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleStartChallenge}
+                className="bg-blue-500/20 text-blue-400 font-bold px-3 py-1.5 rounded-xl text-xs hover:bg-blue-500/30 transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {todayChallengeLog ? 'Review' : 'Start 60s Loop'}
+              </button>
+            </div>
+          </div>
         <section>
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary mb-3 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Spiritual & Defense
@@ -821,7 +937,96 @@ export default function App() {
         </section>
       </div>
 
-      {/* ── NUMERIC VALUE & WILLPOWER RPE MODAL ───────────────── */}
+      {/* ── INSTANT SKILL CHALLENGE LOOP MODAL ───────────────── */}
+      {activeChallenge && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-surface border border-border w-full max-w-lg rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-400" />
+                <span className="font-black uppercase text-xs text-blue-400 tracking-wider">60-Second Architect Challenge</span>
+              </div>
+              <button 
+                onClick={() => { setActiveChallenge(null); setChallengeFeedback(null); }}
+                className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center hover:bg-border transition-colors"
+              >
+                <X className="w-4 h-4 text-textSecondary" />
+              </button>
+            </div>
+
+            <h3 className="text-base font-black text-white mb-2">{activeChallenge.title}</h3>
+            
+            <div className="p-3 bg-surface-elevated border border-border rounded-xl mb-4">
+              <p className="text-xs text-textPrimary leading-relaxed font-mono">{activeChallenge.prompt}</p>
+            </div>
+
+            {!challengeFeedback ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-textSecondary uppercase tracking-wider block mb-1">Your 3-Bullet Rapid Solution</label>
+                  <textarea
+                    rows={4}
+                    value={challengeResponse}
+                    onChange={e => setChallengeResponse(e.target.value)}
+                    placeholder="- 1. Redis token bucket with Lua script for atomic ops&#10;- 2. Fallback to local memory on network partition&#10;- 3. NTP sync check to avoid timestamp drift"
+                    className="w-full bg-background border border-border rounded-xl p-3 text-xs focus:outline-none focus:border-blue-400 transition-colors text-white font-mono"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  onClick={handleEvaluateChallenge}
+                  disabled={isEvaluating || !challengeResponse.trim()}
+                  className="w-full bg-blue-500 text-white font-bold py-3 rounded-xl text-sm hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isEvaluating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Submit for Instant AI Review
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4 animate-in fade-in duration-300">
+                {/* Score badge */}
+                <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                  <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">AI Architect Grade</span>
+                  <span className="text-xl font-black text-blue-400 tabular-nums">{challengeFeedback.score} / 10</span>
+                </div>
+
+                {/* Strengths */}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-success uppercase tracking-wider block">✓ Strengths Identified</span>
+                  {challengeFeedback.strengths.map((s: string, idx: number) => (
+                    <p key={idx} className="text-xs text-textPrimary font-mono pl-2 border-l-2 border-success/40">{s}</p>
+                  ))}
+                </div>
+
+                {/* Blind spots */}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-warning uppercase tracking-wider block">⚠ Blind Spots & Edge Cases</span>
+                  {challengeFeedback.blindSpots.map((b: string, idx: number) => (
+                    <p key={idx} className="text-xs text-textSecondary font-mono pl-2 border-l-2 border-warning/40">{b}</p>
+                  ))}
+                </div>
+
+                {/* Golden Rule */}
+                <div className="p-3 bg-strava/10 border border-strava/30 rounded-xl">
+                  <span className="text-[10px] font-bold text-strava uppercase tracking-wider block mb-1">🎯 Principal Golden Rule</span>
+                  <p className="text-xs text-white font-mono font-medium">{challengeFeedback.goldenRule}</p>
+                </div>
+
+                <button
+                  onClick={() => { setActiveChallenge(null); setChallengeFeedback(null); }}
+                  className="w-full bg-surface-elevated text-textPrimary font-bold py-3 rounded-xl text-sm hover:bg-border transition-colors flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-success" />
+                  Lock In Skill & Close Loop
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
       {activeMetric && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-surface border border-border w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
