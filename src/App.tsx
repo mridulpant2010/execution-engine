@@ -1024,9 +1024,7 @@ export default function App() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
+
       {activeMetric && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-surface border border-border w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
