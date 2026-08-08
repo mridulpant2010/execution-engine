@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge, Sparkles, Send, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { format, subDays, addDays, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
+import { format, subDays, addDays, subMonths, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
 import * as ActivityCalendarModule from 'react-activity-calendar';
 const ActivityCalendar = (ActivityCalendarModule as any).default || (ActivityCalendarModule as any).ActivityCalendar || ActivityCalendarModule;
 
@@ -181,30 +181,59 @@ function RelativeEffortBadge({ score, label, color }: { score: number; label: st
   );
 }
 
-// ── Weekly Effort Chart (bars + line graph + baseline) ─────────
-function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[]; metrics: any[] }) {
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const date = subDays(new Date(), i);
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
-    const { score } = computeRelativeEffort(dayLogs, metrics);
-    days.push({ label: format(date, 'EEE')[0], score, dateStr, isToday: i === 0 });
+// ── Effort Trend Chart (7D / 30D / 1Y toggle + line graph + baseline) ─────────
+function EffortTrendChart({ historicalLogs, metrics }: { historicalLogs: any[]; metrics: any[] }) {
+  const [timeframe, setTimeframe] = useState<'7D' | '30D' | '1Y'>('7D');
+
+  const days: { label: string; score: number; isCurrent?: boolean }[] = [];
+
+  if (timeframe === '7D') {
+    for (let i = 6; i >= 0; i--) {
+      const date = subDays(new Date(), i);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
+      const { score } = computeRelativeEffort(dayLogs, metrics);
+      days.push({ label: format(date, 'EEE')[0], score, isCurrent: i === 0 });
+    }
+  } else if (timeframe === '30D') {
+    for (let i = 29; i >= 0; i--) {
+      const date = subDays(new Date(), i);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
+      const { score } = computeRelativeEffort(dayLogs, metrics);
+      const label = i === 0 ? 'Today' : i % 5 === 0 ? format(date, 'd') : '';
+      days.push({ label, score, isCurrent: i === 0 });
+    }
+  } else if (timeframe === '1Y') {
+    for (let i = 11; i >= 0; i--) {
+      const date = subMonths(new Date(), i);
+      const monthPrefix = format(date, 'yyyy-MM');
+      const monthLogs = historicalLogs.filter(l => l.log_date.startsWith(monthPrefix));
+      
+      const uniqueDays = new Set(monthLogs.map(l => l.log_date));
+      let monthTotalScore = 0;
+      uniqueDays.forEach(dayStr => {
+        const dLogs = monthLogs.filter(l => l.log_date === dayStr);
+        monthTotalScore += computeRelativeEffort(dLogs, metrics).score;
+      });
+      const avgMonthScore = uniqueDays.size > 0 ? Math.round(monthTotalScore / uniqueDays.size) : 0;
+      
+      days.push({ label: format(date, 'MMM'), score: avgMonthScore, isCurrent: i === 0 });
+    }
   }
 
-  const maxScore = Math.max(...days.map(d => d.score), 30); // minimum ceiling of 30 for visual scaling
-  const avgScore = Math.round(days.reduce((sum, d) => sum + d.score, 0) / days.length);
+  const maxScore = Math.max(...days.map(d => d.score), 30);
+  const avgScore = Math.round(days.reduce((sum, d) => sum + d.score, 0) / (days.length || 1));
 
-  // SVG dimensions
-  const chartW = 100; // percentage-based viewBox
+  const chartW = 100;
   const chartH = 80;
-  const barAreaTop = 14; // leave room for score labels
-  const barAreaBottom = 16; // leave room for day labels
+  const barAreaTop = 14;
+  const barAreaBottom = 16;
   const barAreaH = chartH - barAreaTop - barAreaBottom;
-  const barWidth = 8;
-  const gap = (chartW - barWidth * 7) / 8; // even spacing
+  const count = days.length;
+  const barWidth = Math.max(1.8, (chartW * 0.55) / count);
+  const gap = (chartW - barWidth * count) / (count + 1);
 
-  // Compute bar positions & heights
   const barData = days.map((day, i) => {
     const x = gap + i * (barWidth + gap);
     const centerX = x + barWidth / 2;
@@ -214,22 +243,38 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
     return { ...day, x, centerX, y, h, color };
   });
 
-  // Line graph points
   const linePoints = barData.map(b => `${b.centerX},${b.y}`).join(' ');
-
-  // Baseline Y position
   const baselineY = barAreaTop + barAreaH - (avgScore > 0 ? Math.max(3, (avgScore / maxScore) * barAreaH) : 0);
 
   return (
     <div className="rounded-2xl bg-surface border border-border p-4">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Gauge className="w-4 h-4 text-strava" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">7-Day Effort Trend</h2>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">
+            {timeframe === '7D' ? '7-Day Effort Trend' : timeframe === '30D' ? '30-Day Effort Trend' : '1-Year Monthly Average'}
+          </h2>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-px border-t border-dashed border-warning"></div>
-          <span className="text-[9px] font-semibold text-warning tabular-nums">AVG {avgScore}</span>
+        
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-px border-t border-dashed border-warning"></div>
+            <span className="text-[9px] font-semibold text-warning tabular-nums">AVG {avgScore}</span>
+          </div>
+
+          <div className="flex bg-surface-elevated p-0.5 rounded-lg border border-border">
+            {(['7D', '30D', '1Y'] as const).map(tf => (
+              <button
+                key={tf}
+                onClick={() => setTimeframe(tf)}
+                className={`px-2.5 py-0.5 text-[10px] font-bold rounded-md transition-colors ${
+                  timeframe === tf ? 'bg-strava text-white' : 'text-textMuted hover:text-textPrimary'
+                }`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -243,7 +288,7 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
         {/* Bars */}
         {barData.map((b, i) => (
           <g key={i}>
-            <rect x={b.x} y={b.y} width={barWidth} height={b.h} rx="1.2" fill={b.color}
+            <rect x={b.x} y={b.y} width={barWidth} height={b.h} rx="0.8" fill={b.color}
               className="transition-all duration-500" />
           </g>
         ))}
@@ -257,16 +302,16 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
           />
         )}
 
-        {/* Dots at each data point */}
+        {/* Dots at data points */}
         {barData.map((b, i) => (
           b.score > 0 && (
-            <circle key={`dot-${i}`} cx={b.centerX} cy={b.y} r="1.2"
-              fill={b.isToday ? '#FC4C02' : '#fafafa'} stroke="#0a0a0a" strokeWidth="0.4" />
+            <circle key={`dot-${i}`} cx={b.centerX} cy={b.y} r={timeframe === '30D' ? '0.8' : '1.2'}
+              fill={b.isCurrent ? '#FC4C02' : '#fafafa'} stroke="#0a0a0a" strokeWidth="0.3" />
           )
         ))}
 
-        {/* Score labels above bars */}
-        {barData.map((b, i) => (
+        {/* Score labels above bars (only for 7D and 1Y to prevent clutter in 30D) */}
+        {timeframe !== '30D' && barData.map((b, i) => (
           b.score > 0 && (
             <text key={`score-${i}`} x={b.centerX} y={b.y - 2.5} textAnchor="middle"
               className="fill-textSecondary" style={{ fontSize: '3.5px', fontWeight: 700, fontFamily: 'Inter, sans-serif' }}>
@@ -275,13 +320,15 @@ function WeeklyEffortChart({ historicalLogs, metrics }: { historicalLogs: any[];
           )
         ))}
 
-        {/* Day labels below bars */}
+        {/* Day / Month labels below bars */}
         {barData.map((b, i) => (
-          <text key={`label-${i}`} x={b.centerX} y={chartH - 3} textAnchor="middle"
-            className={b.isToday ? 'fill-strava' : 'fill-textMuted'}
-            style={{ fontSize: '3.8px', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>
-            {b.label}
-          </text>
+          b.label ? (
+            <text key={`label-${i}`} x={b.centerX} y={chartH - 3} textAnchor="middle"
+              className={b.isCurrent ? 'fill-strava' : 'fill-textMuted'}
+              style={{ fontSize: timeframe === '30D' ? '3px' : '3.8px', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>
+              {b.label}
+            </text>
+          ) : null
         ))}
       </svg>
     </div>
@@ -430,7 +477,7 @@ export default function App() {
     const { data: logsData, error: logsErr } = await supabase.from('daily_logs').select('*').eq('log_date', selectedDateStr);
     if (logsErr && !dbError) setDbError(logsErr.message);
 
-    const historyStart = format(subDays(new Date(), 180), 'yyyy-MM-dd');
+    const historyStart = format(subDays(new Date(), 365), 'yyyy-MM-dd');
     const { data: historyData } = await supabase.from('daily_logs').select('*').gte('log_date', historyStart);
 
     const dayStart = new Date(selectedDate); dayStart.setHours(0, 0, 0, 0);
@@ -772,33 +819,8 @@ export default function App() {
           <StreakCard label="Spiritual" emoji="🧘" current={spiritualStreak.current} best={spiritualStreak.best} />
         </div>
 
-        {/* Charts: Effort Trend + Heatmap side by side */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* 7-Day Effort Trend */}
-          <WeeklyEffortChart historicalLogs={historicalLogs} metrics={metrics} />
-
-          {/* 90-Day Heatmap */}
-          <div className="rounded-2xl bg-surface border border-border p-4 overflow-x-auto flex flex-col">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary mb-3">90-Day Momentum</h2>
-            <div className="flex-1 flex items-center">
-              {heatmapData.length > 0 ? (
-                <ActivityCalendar
-                  data={heatmapData}
-                  theme={{
-                    light: ['#1c1c1e', '#4a1c08', '#7c2d12', '#c2410c', '#FC4C02'],
-                    dark: ['#1c1c1e', '#4a1c08', '#7c2d12', '#c2410c', '#FC4C02'],
-                  }}
-                  colorScheme="dark"
-                  labels={{ legend: { less: 'Rest', more: 'Active' } }}
-                  hideTotalCount
-                  hideMonthLabels
-                />
-              ) : (
-                <p className="text-xs text-textMuted italic">No data yet</p>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Unified Multi-Timeframe Effort Trend (7D / 30D / 1Y) */}
+        <EffortTrendChart historicalLogs={historicalLogs} metrics={metrics} />
 
         {/* Physical Engine */}
         <section>
