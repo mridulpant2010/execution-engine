@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge, Sparkles, Send, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { format, subDays, addDays, subMonths, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
-import * as ActivityCalendarModule from 'react-activity-calendar';
-const ActivityCalendar = (ActivityCalendarModule as any).default || (ActivityCalendarModule as any).ActivityCalendar || ActivityCalendarModule;
+
 
 const iconMap: Record<string, any> = {
   Activity, Dumbbell, BrainCircuit, FileText, Moon, Flame, ShieldAlert, Footprints, TrendingDown, Hammer
@@ -748,6 +747,15 @@ export default function App() {
     await fetchData();
   };
 
+  const handleSubmitBuild = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!buildText.trim()) return;
+    if (todayBuild) await supabase.from('build_logs').update({ description: buildText.trim(), link: buildLink.trim() || null }).eq('id', todayBuild.id);
+    else await supabase.from('build_logs').insert([{ log_date: selectedDateStr, description: buildText.trim(), link: buildLink.trim() || null }]);
+    setShowBuildForm(false); setBuildText(''); setBuildLink('');
+    await fetchData();
+  };
+
   const handleStartChallenge = (requestedId?: string) => {
     // If an explicit ID is requested (e.g. user clicked "Next Question"), pick that
     if (requestedId) {
@@ -831,47 +839,11 @@ export default function App() {
     }
   };
 
-  const getHeatmapData = () => {
-    if (!metrics.length) return [];
-    const end = new Date();
-    const start = subDays(end, 90);
-    const days = eachDayOfInterval({ start, end });
-    const activityMap: Record<string, number> = {};
-    days.forEach(d => { activityMap[format(d, 'yyyy-MM-dd')] = 0; });
-    historicalLogs.forEach(log => {
-      const metric = metrics.find(m => m.id === log.metric_id);
-      if (!metric) return;
-      const dateStr = log.log_date;
-      if (activityMap[dateStr] === undefined) return;
-      if (metric.type === 'boolean') {
-        if (metric.is_kryptonite && log.value_boolean) activityMap[dateStr] -= 2;
-        else if (!metric.is_kryptonite && log.value_boolean) activityMap[dateStr] += 1;
-      } else if (metric.type === 'numeric' && log.value_numeric > 0) activityMap[dateStr] += 1;
-    });
-    return Object.entries(activityMap).map(([date, score]) => {
-      let level = 0;
-      if (score > 0 && score <= 2) level = 1;
-      else if (score > 2 && score <= 4) level = 2;
-      else if (score > 4 && score <= 6) level = 3;
-      else if (score > 6) level = 4;
-      return { date, count: Math.max(0, score), level };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-  };
-
-  if (loading && metrics.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="animate-spin w-8 h-8 text-strava" />
-      </div>
-    );
-  }
-
   const hasLeak = logs.some(l => {
     const metric = metrics.find(m => m.id === l.metric_id);
     return metric && metric.is_kryptonite && l.value_boolean;
   });
 
-  const heatmapData = getHeatmapData();
   const physicalStreak = computeStreaks(historicalLogs, metrics, 'Physical');
   const cognitiveStreak = computeStreaks(historicalLogs, metrics, 'Cognitive');
   const spiritualStreak = computeStreaks(historicalLogs, metrics, 'Spiritual');
@@ -1087,7 +1059,7 @@ export default function App() {
                 </div>
               </div>
               <button
-                onClick={handleStartChallenge}
+                onClick={() => handleStartChallenge()}
                 className="bg-blue-500/20 text-blue-400 font-bold px-3 py-1.5 rounded-xl text-xs hover:bg-blue-500/30 transition-colors flex items-center gap-1.5 shrink-0"
               >
                 <Zap className="w-3.5 h-3.5" />
