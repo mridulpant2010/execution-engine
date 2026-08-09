@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge, Sparkles, Send, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { format, subDays, addDays, subMonths, eachDayOfInterval, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
+import { format, subDays, addDays, subMonths, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
 
 
 const iconMap: Record<string, any> = {
@@ -838,6 +838,14 @@ export default function App() {
       console.error("Save challenge error:", err);
     }
   };
+
+  if (loading && metrics.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="animate-spin w-8 h-8 text-strava" />
+      </div>
+    );
+  }
 
   const hasLeak = logs.some(l => {
     const metric = metrics.find(m => m.id === l.metric_id);
