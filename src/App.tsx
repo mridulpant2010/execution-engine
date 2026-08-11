@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge, Sparkles, Send, CheckCircle2 } from 'lucide-react';
+import { Check, Flame, ShieldAlert, Dumbbell, BrainCircuit, Moon, FileText, Activity, Loader2, Footprints, TrendingDown, Hammer, Zap, Trophy, ChevronLeft, ChevronRight, CalendarDays, Plus, X, Gauge, Sparkles, Send, CheckCircle2, Tv, Smartphone } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { format, subDays, addDays, subMonths, differenceInDays, parseISO, isToday, isFuture } from 'date-fns';
 
 
 const iconMap: Record<string, any> = {
-  Activity, Dumbbell, BrainCircuit, FileText, Moon, Flame, ShieldAlert, Footprints, TrendingDown, Hammer
+  Activity, Dumbbell, BrainCircuit, FileText, Moon, Flame, ShieldAlert, Footprints, TrendingDown, Hammer, Tv, Smartphone
 };
 
 // ── System Design Instant Challenge Bank ────────────────────────────
@@ -177,9 +177,17 @@ function computeRelativeEffort(logs: any[], metrics: any[]): { score: number; la
     if (name.includes('sleep hours')) { sleepHours = log.value_numeric || 8; return; }
 
     // Kryptonite penalties
-    if (metric.is_kryptonite && log.value_boolean) {
-      if (name.includes('energy leak') || name.includes('pmo')) leakPenalty += 25;
-      else leakPenalty += 10; // "Done Enough" trap
+    if (metric.is_kryptonite) {
+      if (metric.type === 'boolean' && log.value_boolean) {
+        if (name.includes('energy leak') || name.includes('pmo')) leakPenalty += 25;
+        else leakPenalty += 10; // "Done Enough" trap
+      } else if (metric.type === 'numeric' && log.value_numeric > 0) {
+        if (name.includes('screen time') || name.includes('youtube') || name.includes('entertainment')) {
+          leakPenalty += Math.round(8 * log.value_numeric);
+        } else {
+          leakPenalty += Math.round(5 * log.value_numeric);
+        }
+      }
       return;
     }
 
@@ -849,7 +857,7 @@ export default function App() {
 
   const hasLeak = logs.some(l => {
     const metric = metrics.find(m => m.id === l.metric_id);
-    return metric && metric.is_kryptonite && l.value_boolean;
+    return metric && metric.is_kryptonite && (l.value_boolean || (l.value_numeric !== null && l.value_numeric > 0));
   });
 
   const physicalStreak = computeStreaks(historicalLogs, metrics, 'Physical');
