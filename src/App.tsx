@@ -665,8 +665,8 @@ export default function App() {
       const name = metric.name.toLowerCase();
       const isRoutineHabit = name.includes('sleep') || name.includes('prayer') || name.includes('naam') || name.includes('eat');
 
-      // Kryptonite leaks OR routine habits toggle instantly on click without RPE modal
-      if (metric.is_kryptonite || isRoutineHabit) {
+      // Only boolean kryptonite leaks OR routine habits toggle instantly on click without RPE modal
+      if ((metric.is_kryptonite && metric.type === 'boolean') || isRoutineHabit) {
         if (existingLog) await supabase.from('daily_logs').delete().eq('id', existingLog.id);
         else await supabase.from('daily_logs').insert([{ metric_id: metric.id, log_date: selectedDateStr, value_boolean: true }]);
         await fetchData();
