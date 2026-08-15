@@ -114,6 +114,9 @@ const SYSTEM_DESIGN_CHALLENGES = [
     prompt: 'Your database is sharded across 16 PostgreSQL nodes using Hash Sharding (`hash(user_id) % 16`). You need to scale to 32 nodes. How do you rebalance without full downtime?',
     keyConcepts: ['consistent', 'hashing', 'virtual', 'nodes', 'dual', 'read', 'cdc', 'shadow', 'migration'],
     goldenRule: 'Use Consistent Hashing or virtual shards mapped to physical nodes to minimize key migration during cluster scaling.'
+  }
+];
+
 const AMCC_TRAINING_CHALLENGES = [
   {
     id: 'cold-water',
