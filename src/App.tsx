@@ -385,6 +385,121 @@ function AMCCBadge({ amcc }: { amcc: ReturnType<typeof computeAMCCScore> }) {
   );
 }
 
+// ── Recovery & Readiness Engine Calculator ─────────────────────
+function computeRecoveryScore(logs: any[], metrics: any[]): {
+  score: number;
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  isSevereWarning: boolean;
+  warningMessage: string | null;
+} {
+  let sleepHours = 7.5;
+  let sleptOnTime = false;
+  let workHours = 8;
+  let activeReset = 0;
+  let leakDeductions = 0;
+
+  logs.forEach(log => {
+    const metric = metrics.find(m => m.id === log.metric_id);
+    if (!metric) return;
+    const name = metric.name.toLowerCase();
+
+    if (name.includes('sleep hours')) sleepHours = log.value_numeric || 7.5;
+    if (name.includes('sleep by') && log.value_boolean) sleptOnTime = true;
+    if (name.includes('work hours')) workHours = log.value_numeric || 8;
+
+    if (name.includes('prayer') || name.includes('naam')) if (log.value_boolean) activeReset += 15;
+    if (name.includes('eat') && name.includes('healthy')) if (log.value_boolean) activeReset += 15;
+
+    if (metric.is_kryptonite) {
+      if (metric.type === 'boolean' && log.value_boolean) {
+        if (name.includes('energy leak') || name.includes('pmo')) leakDeductions += 35;
+        else leakDeductions += 10;
+      } else if (metric.type === 'numeric' && log.value_numeric > 0) {
+        if (name.includes('screen time') || name.includes('youtube') || name.includes('entertainment')) {
+          leakDeductions += Math.round(5 * log.value_numeric);
+        }
+      }
+    }
+  });
+
+  let sleepScore = 5;
+  if (sleepHours >= 7.5) sleepScore = 40;
+  else if (sleepHours >= 6.5) sleepScore = 25;
+  if (sleptOnTime) sleepScore += 15;
+
+  let stressScore = 15;
+  if (workHours >= 10) stressScore = 0;
+  else if (workHours >= 8) stressScore = 5;
+
+  const rawScore = sleepScore + Math.min(30, activeReset) + stressScore - leakDeductions;
+  const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+  const isSevereWarning = score < 50 || sleepHours < 5.5 || leakDeductions >= 30;
+
+  let label = 'Prime Readiness';
+  let color = 'text-emerald-400';
+  let bgColor = 'bg-emerald-500/10';
+  let borderColor = 'border-emerald-500/30';
+  let warningMessage = null;
+
+  if (score >= 80) {
+    label = 'Prime Readiness';
+    color = 'text-emerald-400';
+    bgColor = 'bg-emerald-500/10';
+    borderColor = 'border-emerald-500/30';
+  } else if (score >= 50) {
+    label = 'Moderate Capacity';
+    color = 'text-amber-400';
+    bgColor = 'bg-amber-500/10';
+    borderColor = 'border-amber-500/30';
+  } else {
+    label = 'High CNS Fatigue';
+    color = 'text-rose-400';
+    bgColor = 'bg-rose-500/15';
+    borderColor = 'border-rose-500/40';
+  }
+
+  if (isSevereWarning) {
+    if (sleepHours < 5.5) {
+      warningMessage = `CRITICAL SLEEP DEBT (${sleepHours}h). High CNS fatigue & injury risk. Avoid RPE 8+ workouts. Prioritize 8h sleep tonight.`;
+    } else if (leakDeductions >= 30) {
+      warningMessage = `HIGH DOPAMINE / LEAK DEPLETION. CNS capacity is severely drained. Execute 60s cold water reset & sleep before 10 PM.`;
+    } else {
+      warningMessage = `HIGH CNS FATIGUE (${score}%). Recovery capacity exceeded. Reduce workout intensity & do active parasympathetic reset.`;
+    }
+  }
+
+  return { score, label, color, bgColor, borderColor, isSevereWarning, warningMessage };
+}
+
+// ── Recovery Badge ─────────────────────────────────────────────
+function RecoveryBadge({ recovery }: { recovery: ReturnType<typeof computeRecoveryScore> }) {
+  return (
+    <div className="text-center">
+      <div className={`relative w-20 h-20 mx-auto ${recovery.isSevereWarning ? 'animate-pulse' : ''}`} style={{ animationDuration: '2s' }}>
+        <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="34" stroke="#27272A" strokeWidth="5" fill="none" />
+          <circle cx="40" cy="40" r="34"
+            stroke={recovery.score >= 80 ? '#34D399' : recovery.score >= 50 ? '#F59E0B' : '#F43F5E'}
+            strokeWidth="5" fill="none"
+            strokeDasharray={`${2 * Math.PI * 34}`}
+            strokeDashoffset={`${2 * Math.PI * 34 * (1 - Math.min(recovery.score, 100) / 100)}`}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-lg font-black tabular-nums ${recovery.color}`}>{recovery.score}%</span>
+        </div>
+      </div>
+      <p className={`text-[10px] font-bold uppercase tracking-wider mt-1 ${recovery.color}`}>{recovery.label}</p>
+    </div>
+  );
+}
+
 // ── Effort & Skill Drilldown Chart (7D / 30D / 1Y + Skill Drilldown Filter) ─────────
 function EffortTrendChart({ 
   historicalLogs, 
@@ -411,6 +526,10 @@ function EffortTrendChart({
       const dayBuilds = historicalBuilds.filter(b => b.log_date === dateStr).length;
       const dayChallenge = historicalChallenges.find(c => c.log_date === dateStr);
       return computeAMCCScore(dayLogs, metrics, dayBuilds, dayChallenge).score;
+    }
+    if (selectedMetricId === 'recovery') {
+      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
+      return computeRecoveryScore(dayLogs, metrics).score;
     }
     if (selectedMetricId === 'builds') {
       return historicalBuilds.filter(b => b.log_date === dateStr).length;
@@ -519,6 +638,7 @@ function EffortTrendChart({
           >
             <option value="overall">⚡ Overall Relative Effort</option>
             <option value="amcc">🧠 aMCC Willpower Hypertrophy</option>
+            <option value="recovery">🔋 Daily Recovery & Readiness</option>
             <option value="builds">🔨 What You Built (Builds)</option>
             <option value="challenges">🎯 System Design AI Loops</option>
             <optgroup label="Engine Metrics">
@@ -1028,8 +1148,9 @@ export default function App() {
   }).length;
   const completionPct = totalNonKryptonite > 0 ? Math.round((completedCount / totalNonKryptonite) * 100) : 0;
 
-  // Compute Relative Effort
+  // Compute Relative Effort & Recovery
   const relativeEffort = computeRelativeEffort(logs, metrics);
+  const recoveryScore = computeRecoveryScore(logs, metrics);
 
   return (
     <div className="min-h-screen bg-background text-textPrimary pb-24">
@@ -1071,8 +1192,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Daily Stats: Completion + Relative Effort + aMCC Brain Gauge */}
-          <div className="flex items-center justify-center gap-5 md:gap-8 py-4 flex-wrap">
+          {/* Daily Stats: Completion + Relative Effort + aMCC Brain Gauge + Recovery Ring */}
+          <div className="flex items-center justify-center gap-4 md:gap-6 py-4 flex-wrap">
             {/* Completion Ring */}
             <div className="text-center">
               <div className="relative w-20 h-20 mx-auto">
@@ -1103,6 +1224,12 @@ export default function App() {
 
             {/* aMCC Willpower Hypertrophy Ring */}
             <AMCCBadge amcc={computeAMCCScore(logs, metrics, todayBuild ? 1 : 0, todayChallengeLog)} />
+
+            {/* Divider */}
+            <div className="w-px h-16 bg-border hidden sm:block"></div>
+
+            {/* Recovery & Readiness Ring */}
+            <RecoveryBadge recovery={recoveryScore} />
           </div>
         </div>
       </div>
@@ -1113,6 +1240,24 @@ export default function App() {
           <div className="p-3 bg-warning/10 border border-warning/20 text-warning rounded-xl flex items-center gap-2 text-sm">
             <CalendarDays className="w-4 h-4 shrink-0" />
             <span className="font-medium">You are editing a past day</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── SEVERE RECOVERY WARNING BANNER ──────────────────────── */}
+      {recoveryScore.isSevereWarning && (
+        <div className="mx-4 md:mx-8 mb-4 max-w-3xl lg:mx-auto">
+          <div className="p-4 bg-rose-950/40 border-2 border-rose-500/50 text-rose-300 rounded-2xl flex items-start gap-3 shadow-lg animate-pulse" style={{ animationDuration: '3s' }}>
+            <ShieldAlert className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-black text-xs uppercase tracking-wider text-rose-400">⚠️ SEVERE RECOVERY WARNING</span>
+                <span className="text-[10px] font-bold bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full">{recoveryScore.label} ({recoveryScore.score}%)</span>
+              </div>
+              <p className="text-xs font-semibold leading-relaxed text-rose-200">
+                {recoveryScore.warningMessage}
+              </p>
+            </div>
           </div>
         </div>
       )}
