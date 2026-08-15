@@ -258,6 +258,97 @@ function RelativeEffortBadge({ score, label, color }: { score: number; label: st
   );
 }
 
+// ── aMCC (Anterior Mid-Cingulate Cortex) Willpower Calculator ───
+function computeAMCCScore(logs: any[], metrics: any[], buildsCount: number = 0, challengeLog?: any): {
+  score: number;
+  stimulus: number;
+  atrophy: number;
+  zone: string;
+  zoneColor: string;
+  level: number;
+} {
+  let stimulus = 0;
+  let atrophy = 0;
+
+  logs.forEach(log => {
+    const metric = metrics.find(m => m.id === log.metric_id);
+    if (!metric) return;
+    const name = metric.name.toLowerCase();
+
+    // Atrophy: Kryptonite Leaks & Screen Time
+    if (metric.is_kryptonite) {
+      if (metric.type === 'boolean' && log.value_boolean) {
+        if (name.includes('energy leak') || name.includes('pmo')) atrophy += 30;
+        else atrophy += 12; // Done enough trap
+      } else if (metric.type === 'numeric' && log.value_numeric > 0) {
+        if (name.includes('screen time') || name.includes('youtube') || name.includes('entertainment')) {
+          atrophy += Math.round(10 * log.value_numeric);
+        } else {
+          atrophy += Math.round(5 * log.value_numeric);
+        }
+      }
+      return;
+    }
+
+    // Stimulus: High-resistance actions (RPE >= 5) grow aMCC!
+    const rpe = log.intensity_rpe || 5;
+    if (metric.type === 'boolean' && log.value_boolean) {
+      if (rpe >= 8) stimulus += 12;
+      else if (rpe >= 5) stimulus += 6;
+      else stimulus += 2;
+    } else if (metric.type === 'numeric' && log.value_numeric > 0) {
+      if (rpe >= 8) stimulus += Math.round(8 * log.value_numeric);
+      else if (rpe >= 5) stimulus += Math.round(4 * log.value_numeric);
+      else stimulus += Math.round(2 * log.value_numeric);
+    }
+  });
+
+  if (buildsCount > 0) stimulus += 15 * buildsCount;
+  if (challengeLog) stimulus += 12;
+
+  const score = Math.max(0, stimulus - atrophy);
+  const level = Math.floor(score / 10) + 1;
+
+  let zone = 'Atrophy Warning';
+  let zoneColor = 'text-rose-400';
+  if (score >= 45) {
+    zone = 'Hypertrophy';
+    zoneColor = 'text-emerald-400';
+  } else if (score >= 20) {
+    zone = 'Maintenance';
+    zoneColor = 'text-amber-400';
+  }
+
+  return { score, stimulus, atrophy, zone, zoneColor, level };
+}
+
+// ── aMCC Brain Volume Badge ─────────────────────────────────────
+function AMCCBadge({ amcc }: { amcc: ReturnType<typeof computeAMCCScore> }) {
+  const isHypertrophy = amcc.score >= 45;
+  return (
+    <div className="text-center">
+      <div className={`relative w-20 h-20 mx-auto ${isHypertrophy ? 'animate-pulse' : ''}`} style={{ animationDuration: '4s' }}>
+        <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="34" stroke="#27272A" strokeWidth="5" fill="none" />
+          <circle cx="40" cy="40" r="34"
+            stroke={amcc.score >= 45 ? '#34D399' : amcc.score >= 20 ? '#F59E0B' : '#F43F5E'}
+            strokeWidth="5" fill="none"
+            strokeDasharray={`${2 * Math.PI * 34}`}
+            strokeDashoffset={`${2 * Math.PI * 34 * (1 - Math.min(amcc.score, 100) / 100)}`}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-base font-black tabular-nums ${amcc.zoneColor}`}>Lvl {amcc.level}</span>
+          <span className="text-[9px] font-bold text-textMuted font-mono">{amcc.score} GU</span>
+        </div>
+      </div>
+      <p className={`text-[10px] font-bold uppercase tracking-wider mt-1 ${amcc.zoneColor}`}>{amcc.zone}</p>
+    </div>
+  );
+}
+
 // ── Effort & Skill Drilldown Chart (7D / 30D / 1Y + Skill Drilldown Filter) ─────────
 function EffortTrendChart({ 
   historicalLogs, 
@@ -278,6 +369,12 @@ function EffortTrendChart({
     if (selectedMetricId === 'overall') {
       const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
       return computeRelativeEffort(dayLogs, metrics).score;
+    }
+    if (selectedMetricId === 'amcc') {
+      const dayLogs = historicalLogs.filter(l => l.log_date === dateStr);
+      const dayBuilds = historicalBuilds.filter(b => b.log_date === dateStr).length;
+      const dayChallenge = historicalChallenges.find(c => c.log_date === dateStr);
+      return computeAMCCScore(dayLogs, metrics, dayBuilds, dayChallenge).score;
     }
     if (selectedMetricId === 'builds') {
       return historicalBuilds.filter(b => b.log_date === dateStr).length;
@@ -385,6 +482,7 @@ function EffortTrendChart({
             className="bg-surface-elevated border border-border text-xs font-bold text-textPrimary rounded-lg p-1.5 focus:outline-none focus:border-strava cursor-pointer"
           >
             <option value="overall">⚡ Overall Relative Effort</option>
+            <option value="amcc">🧠 aMCC Willpower Hypertrophy</option>
             <option value="builds">🔨 What You Built (Builds)</option>
             <option value="challenges">🎯 System Design AI Loops</option>
             <optgroup label="Engine Metrics">
@@ -915,8 +1013,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Daily Stats: Completion + Relative Effort */}
-          <div className="flex items-center justify-center gap-8 py-4">
+          {/* Daily Stats: Completion + Relative Effort + aMCC Brain Gauge */}
+          <div className="flex items-center justify-center gap-5 md:gap-8 py-4 flex-wrap">
             {/* Completion Ring */}
             <div className="text-center">
               <div className="relative w-20 h-20 mx-auto">
@@ -937,10 +1035,16 @@ export default function App() {
             </div>
 
             {/* Divider */}
-            <div className="w-px h-16 bg-border"></div>
+            <div className="w-px h-16 bg-border hidden sm:block"></div>
 
             {/* Relative Effort Ring */}
             <RelativeEffortBadge score={relativeEffort.score} label={relativeEffort.label} color={relativeEffort.color} />
+
+            {/* Divider */}
+            <div className="w-px h-16 bg-border hidden sm:block"></div>
+
+            {/* aMCC Willpower Hypertrophy Ring */}
+            <AMCCBadge amcc={computeAMCCScore(logs, metrics, todayBuild ? 1 : 0, todayChallengeLog)} />
           </div>
         </div>
       </div>
@@ -1116,10 +1220,24 @@ export default function App() {
               <p className="text-sm text-textMuted italic">No actions logged yet. Take action.</p>
             )}
           </div>
-          <form onSubmit={handleAddInterstitialLog} className="flex gap-2">
+          <form onSubmit={handleAddInterstitialLog} className="flex gap-2 flex-wrap">
             <input type="text" value={logText} onChange={e => setLogText(e.target.value)}
               placeholder="Log an action..."
-              className="flex-1 bg-background border border-border rounded-xl p-3 text-sm focus:outline-none focus:border-strava transition-colors" />
+              className="flex-1 bg-background border border-border rounded-xl p-3 text-sm focus:outline-none focus:border-strava transition-colors min-w-[200px]" />
+            <button
+              type="button"
+              onClick={async () => {
+                const logTimestamp = new Date(selectedDate);
+                const now = new Date();
+                logTimestamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+                await supabase.from('interstitial_logs').insert([{ content: "⚡ Overcame subjective resistance / micro-friction (aMCC Hypertrophy Boost)", log_type: 'reflection', created_at: logTimestamp.toISOString() }]);
+                await fetchData();
+              }}
+              className="bg-emerald-500/20 text-emerald-400 font-bold px-3 py-2 rounded-xl text-xs hover:bg-emerald-500/30 transition-colors flex items-center gap-1 shrink-0"
+              title="Click when you pushed through subjective friction / micro-discomfort"
+            >
+              <Zap className="w-3.5 h-3.5" /> Overcame Friction (+aMCC)
+            </button>
             <button type="submit" className="bg-strava text-white font-bold px-5 py-2 rounded-xl text-sm hover:bg-strava-dark transition-colors shrink-0">
               Log
             </button>
