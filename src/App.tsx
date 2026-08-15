@@ -114,6 +114,42 @@ const SYSTEM_DESIGN_CHALLENGES = [
     prompt: 'Your database is sharded across 16 PostgreSQL nodes using Hash Sharding (`hash(user_id) % 16`). You need to scale to 32 nodes. How do you rebalance without full downtime?',
     keyConcepts: ['consistent', 'hashing', 'virtual', 'nodes', 'dual', 'read', 'cdc', 'shadow', 'migration'],
     goldenRule: 'Use Consistent Hashing or virtual shards mapped to physical nodes to minimize key migration during cluster scaling.'
+const AMCC_TRAINING_CHALLENGES = [
+  {
+    id: 'cold-water',
+    title: '🥶 60-Second Cold Water Finish',
+    protocol: 'Finish your next shower or sink wash with 60 seconds of pure freezing cold water. Embrace the shock without flinching.',
+    gu: 15
+  },
+  {
+    id: 'pushups-now',
+    title: '🏋️ 20 Immediate Pushups / Burpees',
+    protocol: 'Drop down right now and complete 20 crisp pushups or 15 burpees. No hesitation, no waiting.',
+    gu: 12
+  },
+  {
+    id: 'digital-fast',
+    title: '📱 60-Min Phone Lockout',
+    protocol: 'Put your phone in another room or switch to grayscale mode for the next 60 minutes while focusing on work.',
+    gu: 15
+  },
+  {
+    id: 'cold-start-work',
+    title: '⚡ 10-Minute Cold Start Sprint',
+    protocol: 'Open your code editor/notes and work on your hardest task for 10 minutes non-stop. Do not check any tabs.',
+    gu: 15
+  },
+  {
+    id: 'box-breath',
+    title: '🧘 2-Min Controlled Stress Reset',
+    protocol: 'Perform 4-4-4-4 Box Breathing for 2 full minutes. Inhale 4s, Hold 4s, Exhale 4s, Hold 4s.',
+    gu: 10
+  },
+  {
+    id: 'youtube-kill',
+    title: '🛑 Instant Distraction Cut',
+    protocol: 'Close any entertainment / YouTube tab immediately right now without finishing the video.',
+    gu: 15
   }
 ];
 
@@ -703,6 +739,9 @@ export default function App() {
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [todayChallengeLog, setTodayChallengeLog] = useState<any>(null);
 
+  // aMCC Micro-Discomfort Trainer State
+  const [activeAmccChallenge, setActiveAmccChallenge] = useState<any | null>(null);
+
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const isViewingToday = isToday(selectedDate);
 
@@ -903,6 +942,25 @@ export default function App() {
     setActiveChallenge(nextChallenge);
     setChallengeResponse('');
     setChallengeFeedback(null);
+  };
+
+  const handleStartAmccWorkout = () => {
+    const randomChallenge = AMCC_TRAINING_CHALLENGES[Math.floor(Math.random() * AMCC_TRAINING_CHALLENGES.length)];
+    setActiveAmccChallenge(randomChallenge);
+  };
+
+  const handleCompleteAmccWorkout = async () => {
+    if (!activeAmccChallenge) return;
+    const logTimestamp = new Date(selectedDate);
+    const now = new Date();
+    logTimestamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+    await supabase.from('interstitial_logs').insert([{ 
+      content: `⚡ Conquered aMCC Training Protocol: ${activeAmccChallenge.title} (+${activeAmccChallenge.gu} GU)`, 
+      log_type: 'reflection', 
+      created_at: logTimestamp.toISOString() 
+    }]);
+    setActiveAmccChallenge(null);
+    await fetchData();
   };
 
   const handleEvaluateChallenge = async () => {
@@ -1187,6 +1245,31 @@ export default function App() {
               </button>
             </div>
           </div>
+
+          {/* 🧠 aMCC Hypertrophy Training Card */}
+          <div className="mt-3 rounded-2xl p-4 border bg-emerald-950/20 border-emerald-500/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                  <BrainCircuit className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-textPrimary">aMCC Discomfort Trainer</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded-full">Hypertrophy Engine</span>
+                  </div>
+                  <p className="text-xs text-textSecondary">Target subjective resistance to physically grow the aMCC</p>
+                </div>
+              </div>
+              <button
+                onClick={handleStartAmccWorkout}
+                className="bg-emerald-500/20 text-emerald-400 font-bold px-3 py-1.5 rounded-xl text-xs hover:bg-emerald-500/30 transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Train aMCC
+              </button>
+            </div>
+          </div>
         <section>
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary mb-3 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-500"></span> Spiritual & Defense
@@ -1338,6 +1421,54 @@ export default function App() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── aMCC DISCOMFORT TRAINER MODAL ───────────────── */}
+      {activeAmccChallenge && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-surface border border-border w-full max-w-md rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BrainCircuit className="w-4 h-4 text-emerald-400" />
+                <span className="font-black uppercase text-xs text-emerald-400 tracking-wider">aMCC Discomfort Protocol</span>
+              </div>
+              <button 
+                onClick={() => setActiveAmccChallenge(null)}
+                className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center hover:bg-border transition-colors"
+              >
+                <X className="w-4 h-4 text-textSecondary" />
+              </button>
+            </div>
+
+            <h3 className="text-lg font-black text-white mb-2">{activeAmccChallenge.title}</h3>
+            
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-4">
+              <p className="text-xs text-emerald-300 leading-relaxed font-medium">{activeAmccChallenge.protocol}</p>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-surface-elevated border border-border rounded-xl mb-4">
+              <span className="text-xs font-bold text-textSecondary uppercase tracking-wider">Hypertrophy Reward</span>
+              <span className="text-sm font-black text-emerald-400 tabular-nums">+{activeAmccChallenge.gu} GU</span>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleStartAmccWorkout}
+                className="bg-surface-elevated text-textSecondary font-bold px-3 py-3 rounded-xl text-xs hover:bg-border transition-colors"
+                title="Try another protocol"
+              >
+                🔄 Cycle Protocol
+              </button>
+              <button
+                onClick={handleCompleteAmccWorkout}
+                className="flex-1 bg-emerald-500 text-white font-bold py-3 rounded-xl text-sm hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Conquered Friction (+{activeAmccChallenge.gu} GU)
+              </button>
+            </div>
           </div>
         </div>
       )}
