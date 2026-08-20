@@ -1429,6 +1429,93 @@ export default function App() {
           </div>
         </section>
 
+        {/* 🔁 Identity Rewire — Strategic Detachment Reminders */}
+        <section className="rounded-2xl border-2 border-amber-500/30 bg-amber-950/15 p-4">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-amber-400 mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Identity Rewire — Who Are You Becoming?
+          </h2>
+          {(() => {
+            const IDENTITY_MANTRAS = [
+              {
+                identity: "I am an engineer preparing for Google. Office is my funding source, not my identity.",
+                lossFrame: "Every hour past 8h at this company is an hour DONATED to an employer who won't renew your contract.",
+                action: "Close the laptop. Open a System Design problem. Build your future."
+              },
+              {
+                identity: "I allocate energy with ruthless strategic precision. Working harder ≠ working smarter.",
+                lossFrame: "10 hrs at office + 0 hrs prep = 365 days closer to nowhere. The math doesn't lie.",
+                action: "Set the 8-hour alarm. When it rings, you are legally done."
+              },
+              {
+                identity: "I am not lazy for stopping at 8 hours. I am disciplined for protecting my prep time.",
+                lossFrame: "No raise came after 1 year of over-working. Another year of the same won't change the outcome.",
+                action: "The guilt you feel for leaving on time is your old identity dying. Let it."
+              },
+              {
+                identity: "My System Design depth is my ticket out. Every architecture decision I study compounds forever.",
+                lossFrame: "Your colleagues who got promoted studied after hours. They didn't give extra hours to the company.",
+                action: "Open one System Design topic right now. 30 minutes. That's all it takes."
+              },
+              {
+                identity: "I am the architect who thinks in tradeoffs, not the employee who thinks in Jira tickets.",
+                lossFrame: "That Jira ticket you're staying late for will be forgotten in 2 weeks. Your System Design skill stays forever.",
+                action: "Ask yourself: 'Will this matter for my Google interview?' If no, it waits until tomorrow."
+              },
+              {
+                identity: "My worth is not defined by how many hours I sit at a desk. It's defined by what I build and learn.",
+                lossFrame: "You already proved loyalty for 1 year. The contract still won't renew. Stop proving. Start preparing.",
+                action: "Write one architecture reflection from today's work. Extract the learning. Discard the stress."
+              },
+              {
+                identity: "I choose strategic discomfort over comfortable stagnation. Prep is hard. Staying is harder.",
+                lossFrame: "Comfort of over-working is an illusion. The real discomfort is being in the same role 2 years from now.",
+                action: "Do the aMCC challenge. Then do 1 System Design problem. Friction is the path."
+              },
+              {
+                identity: "I don't need permission to leave on time. I need discipline to use that time wisely.",
+                lossFrame: "Nobody at your company will remember your extra 2 hours. But Google will remember your System Design depth.",
+                action: "Tonight: 30 min System Design. Not YouTube. Not scrolling. Architecture."
+              },
+              {
+                identity: "I am building escape velocity. Every day of prep is fuel. Every day of over-working is drag.",
+                lossFrame: "At this rate, you're trading $200/hr Google compensation for free overtime at a dead-end contract.",
+                action: "Calculate it: 2 hrs/day × 180 days = 360 hrs of System Design mastery. That's a Google offer."
+              },
+              {
+                identity: "The best engineers don't work the most hours. They solve the hardest problems in the least time.",
+                lossFrame: "If 10-hour days produced results, you'd have been promoted 6 months ago. They didn't. Change the strategy.",
+                action: "Efficiency at office. Intensity at prep. Recovery at night. This is the formula."
+              }
+            ];
+            const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+            const todayMantra = IDENTITY_MANTRAS[dayOfYear % IDENTITY_MANTRAS.length];
+            return (
+              <div className="space-y-3">
+                {/* Identity Statement */}
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-base">🪞</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-0.5">New Identity</span>
+                    <p className="text-sm font-bold text-white leading-relaxed">{todayMantra.identity}</p>
+                  </div>
+                </div>
+                {/* Loss Frame */}
+                <div className="p-3 bg-rose-950/30 border border-rose-500/20 rounded-xl">
+                  <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-0.5">⚠️ Loss Frame</span>
+                  <p className="text-xs text-rose-300 font-medium leading-relaxed">{todayMantra.lossFrame}</p>
+                </div>
+                {/* Action */}
+                <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl">
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-0.5">→ Action Right Now</span>
+                  <p className="text-xs text-emerald-300 font-medium leading-relaxed">{todayMantra.action}</p>
+                </div>
+              </div>
+            );
+          })()}
+        </section>
+
         {/* Interstitial Log */}
         <section className="rounded-2xl bg-surface border border-border p-4">
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary mb-4 flex items-center gap-2">
