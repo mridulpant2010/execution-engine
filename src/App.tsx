@@ -1162,11 +1162,16 @@ export default function App() {
         <div className="max-w-3xl mx-auto">
           {/* App title + date nav */}
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-strava flex items-center justify-center">
-                <Zap className="w-4 h-4 text-white" />
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-strava flex items-center justify-center shrink-0">
+                  <Zap className="w-4 h-4 text-white" />
+                </div>
+                <h1 className="text-lg font-black uppercase tracking-tight leading-none">Execution Engine</h1>
               </div>
-              <h1 className="text-lg font-black uppercase tracking-tight">Execution Engine</h1>
+              <span className="text-[9px] font-bold text-strava/90 uppercase tracking-widest sm:ml-10">
+                Run ⭢ Lift ⭢ Build ⭢ Ship ⭢ Happy ⭢ Repeat
+              </span>
             </div>
             {!isViewingToday && (
               <button onClick={goToToday} className="text-xs bg-strava/20 text-strava px-3 py-1.5 rounded-full font-bold hover:bg-strava/30 transition-colors">
