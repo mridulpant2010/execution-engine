@@ -1437,54 +1437,44 @@ export default function App() {
           {(() => {
             const IDENTITY_MANTRAS = [
               {
-                identity: "I am an engineer preparing for Google. Office is my funding source, not my identity.",
-                lossFrame: "Every hour past 8h at this company is an hour DONATED to an employer who won't renew your contract.",
-                action: "Close the laptop. Open a System Design problem. Build your future."
+                identity: "I am a builder. I don't just think; I write code, spin up pipelines, and ship cool tech.",
+                lossFrame: "Every day you spend 'thinking' instead of building is a day your builder identity decays. The world only rewards what is shipped.",
+                action: "Stop reading. Open your terminal. Write 10 lines of executable code and hit run. That's a build."
               },
               {
-                identity: "I allocate energy with ruthless strategic precision. Working harder ≠ working smarter.",
-                lossFrame: "10 hrs at office + 0 hrs prep = 365 days closer to nowhere. The math doesn't lie.",
-                action: "Set the 8-hour alarm. When it rings, you are legally done."
+                identity: "The contract ends in December. They are hypocrites. I owe them 8 hours of average work, nothing more.",
+                lossFrame: "Every extra hour given to this company is free labor donated to people who will not renew your contract. You are funding their success at the cost of your own.",
+                action: "When the 8-hour mark hits, slam the laptop shut without a shred of guilt. They don't care about you; care about your goals."
               },
               {
-                identity: "I am not lazy for stopping at 8 hours. I am disciplined for protecting my prep time.",
-                lossFrame: "No raise came after 1 year of over-working. Another year of the same won't change the outcome.",
-                action: "The guilt you feel for leaving on time is your old identity dying. Let it."
+                identity: "I am a high-capability engineer focused on mastering System Design at a Tier-1 level.",
+                lossFrame: "L5 offers are won on System Design, not office Jira tickets. You cannot fake architectural depth in a Google loop.",
+                action: "Open a System Design challenge. Master one tradeoff (e.g., consistency vs. latency). Don't leave it until you truly understand it."
               },
               {
-                identity: "My System Design depth is my ticket out. Every architecture decision I study compounds forever.",
-                lossFrame: "Your colleagues who got promoted studied after hours. They didn't give extra hours to the company.",
-                action: "Open one System Design topic right now. 30 minutes. That's all it takes."
+                identity: "My future lies in my own projects and my own deep technical skills. The office is just a temporary waiting room.",
+                lossFrame: "If December comes and you haven't built anything or mastered System Design, you will be scrambling in a tough market.",
+                action: "Steal your time back. Dedicate the next hour entirely to your own personal tech growth."
               },
               {
-                identity: "I am the architect who thinks in tradeoffs, not the employee who thinks in Jira tickets.",
-                lossFrame: "That Jira ticket you're staying late for will be forgotten in 2 weeks. Your System Design skill stays forever.",
-                action: "Ask yourself: 'Will this matter for my Google interview?' If no, it waits until tomorrow."
+                identity: "I turn ideas into architecture and architecture into code. That is my true nature.",
+                lossFrame: "Analysis paralysis is a fear response. The longer you wait to start building, the heavier the resistance becomes.",
+                action: "Poison the blank canvas. Copy-paste a working template, run it, and break the friction immediately."
               },
               {
-                identity: "My worth is not defined by how many hours I sit at a desk. It's defined by what I build and learn.",
-                lossFrame: "You already proved loyalty for 1 year. The contract still won't renew. Stop proving. Start preparing.",
-                action: "Write one architecture reflection from today's work. Extract the learning. Discard the stress."
+                identity: "I observe office chaos clinically. I am emotionally detached from their politics and fake urgency.",
+                lossFrame: "Getting stressed over a company that won't renew your contract is a massive drain on your central nervous system.",
+                action: "Extract the architectural lesson from today's office fire, log it, and leave the stress at the desk."
               },
               {
-                identity: "I choose strategic discomfort over comfortable stagnation. Prep is hard. Staying is harder.",
-                lossFrame: "Comfort of over-working is an illusion. The real discomfort is being in the same role 2 years from now.",
-                action: "Do the aMCC challenge. Then do 1 System Design problem. Friction is the path."
+                identity: "I am building my escape velocity for December. Every day is a brick in that foundation.",
+                lossFrame: "December is an immovable deadline. The clock is ticking. Wasted office overtime is time you can never buy back.",
+                action: "Calculate your escape vector. Spend 30 minutes right now studying a concept that Google tests."
               },
               {
-                identity: "I don't need permission to leave on time. I need discipline to use that time wisely.",
-                lossFrame: "Nobody at your company will remember your extra 2 hours. But Google will remember your System Design depth.",
-                action: "Tonight: 30 min System Design. Not YouTube. Not scrolling. Architecture."
-              },
-              {
-                identity: "I am building escape velocity. Every day of prep is fuel. Every day of over-working is drag.",
-                lossFrame: "At this rate, you're trading $200/hr Google compensation for free overtime at a dead-end contract.",
-                action: "Calculate it: 2 hrs/day × 180 days = 360 hrs of System Design mastery. That's a Google offer."
-              },
-              {
-                identity: "The best engineers don't work the most hours. They solve the hardest problems in the least time.",
-                lossFrame: "If 10-hour days produced results, you'd have been promoted 6 months ago. They didn't. Change the strategy.",
-                action: "Efficiency at office. Intensity at prep. Recovery at night. This is the formula."
+                identity: "I am the architect who thinks in tradeoffs, not the employee who begs for recognition.",
+                lossFrame: "You gave them a year of hard effort and got no raise. Seeking their approval is a broken, sunk-cost loop.",
+                action: "Validate yourself by shipping a build or nailing a System Design loop. That is the only validation that matters."
               }
             ];
             const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
