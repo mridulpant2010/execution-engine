@@ -1488,29 +1488,37 @@ export default function App() {
               }
             ];
             const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
-            const todayMantra = IDENTITY_MANTRAS[dayOfYear % IDENTITY_MANTRAS.length];
+            const activeMantras = [
+              IDENTITY_MANTRAS[dayOfYear % IDENTITY_MANTRAS.length],
+              IDENTITY_MANTRAS[(dayOfYear + 3) % IDENTITY_MANTRAS.length],
+              IDENTITY_MANTRAS[(dayOfYear + 6) % IDENTITY_MANTRAS.length]
+            ];
             return (
-              <div className="space-y-3">
-                {/* Identity Statement */}
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-base">🪞</span>
+              <div className="space-y-5">
+                {activeMantras.map((mantra, idx) => (
+                  <div key={idx} className="space-y-2.5 pb-4 border-b border-amber-500/20 last:border-0 last:pb-0">
+                    {/* Identity Statement */}
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-sm font-black text-amber-500">{idx + 1}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-0.5">New Identity</span>
+                        <p className="text-sm font-bold text-white leading-relaxed">{mantra.identity}</p>
+                      </div>
+                    </div>
+                    {/* Loss Frame */}
+                    <div className="p-3 bg-rose-950/30 border border-rose-500/20 rounded-xl ml-11">
+                      <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-0.5">⚠️ Loss Frame</span>
+                      <p className="text-xs text-rose-300 font-medium leading-relaxed">{mantra.lossFrame}</p>
+                    </div>
+                    {/* Action */}
+                    <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl ml-11">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-0.5">→ Action Right Now</span>
+                      <p className="text-xs text-emerald-300 font-medium leading-relaxed">{mantra.action}</p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-0.5">New Identity</span>
-                    <p className="text-sm font-bold text-white leading-relaxed">{todayMantra.identity}</p>
-                  </div>
-                </div>
-                {/* Loss Frame */}
-                <div className="p-3 bg-rose-950/30 border border-rose-500/20 rounded-xl">
-                  <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-0.5">⚠️ Loss Frame</span>
-                  <p className="text-xs text-rose-300 font-medium leading-relaxed">{todayMantra.lossFrame}</p>
-                </div>
-                {/* Action */}
-                <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl">
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-0.5">→ Action Right Now</span>
-                  <p className="text-xs text-emerald-300 font-medium leading-relaxed">{todayMantra.action}</p>
-                </div>
+                ))}
               </div>
             );
           })()}
