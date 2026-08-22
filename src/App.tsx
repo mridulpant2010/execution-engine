@@ -1144,12 +1144,38 @@ export default function App() {
   const spiritualStreak = computeStreaks(historicalLogs, metrics, 'Spiritual');
 
   // Calculate daily completion rate
-  const totalNonKryptonite = metrics.filter(m => !m.is_kryptonite).length;
-  const completedCount = logs.filter(l => {
+  const standardMetrics = metrics.filter(m => !m.is_kryptonite);
+  let expectedCount = standardMetrics.length;
+
+  // Deduct 1 from expected count because Run and Hyrox share a single "Physical Training" slot
+  const hasRunMetric = standardMetrics.some(m => m.name.toLowerCase().includes('run'));
+  const hasHyroxMetric = standardMetrics.some(m => m.name.toLowerCase().includes('hyrox') || m.name.toLowerCase().includes('strength'));
+  if (hasRunMetric && hasHyroxMetric) {
+    expectedCount -= 1;
+  }
+
+  let completedCount = 0;
+  let runOrHyroxLogged = false;
+
+  logs.forEach(l => {
     const m = metrics.find(mt => mt.id === l.metric_id);
-    return m && !m.is_kryptonite && (l.value_boolean || (l.value_numeric > 0));
-  }).length;
-  const completionPct = totalNonKryptonite > 0 ? Math.round((completedCount / totalNonKryptonite) * 100) : 0;
+    if (m && !m.is_kryptonite) {
+      const isCompleted = l.value_boolean || (l.value_numeric !== null && l.value_numeric > 0);
+      if (isCompleted) {
+        const isRunOrHyrox = m.name.toLowerCase().includes('run') || m.name.toLowerCase().includes('hyrox') || m.name.toLowerCase().includes('strength');
+        if (isRunOrHyrox) {
+          if (!runOrHyroxLogged) {
+            completedCount += 1;
+            runOrHyroxLogged = true;
+          }
+        } else {
+          completedCount += 1;
+        }
+      }
+    }
+  });
+
+  const completionPct = expectedCount > 0 ? Math.min(100, Math.round((completedCount / expectedCount) * 100)) : 0;
 
   // Compute Relative Effort & Recovery
   const relativeEffort = computeRelativeEffort(logs, metrics);
@@ -1218,7 +1244,7 @@ export default function App() {
                   <span className="text-lg font-black tabular-nums text-strava">{completionPct}%</span>
                 </div>
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mt-1 text-textSecondary">{completedCount}/{totalNonKryptonite} Done</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider mt-1 text-textSecondary">{completedCount}/{expectedCount} Done</p>
             </div>
 
             {/* Divider */}
